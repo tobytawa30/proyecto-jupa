@@ -8,7 +8,7 @@ export default async function DashboardPage() {
   const totalStudents = await db
     .select({ count: count() })
     .from(studentSessions)
-    .where(eq(studentSessions.completedAt, sql`NOT NULL`));
+    .where(sql`${studentSessions.completedAt} IS NOT NULL`);
 
   const totalExams = await db
     .select({ count: count() })
@@ -28,7 +28,7 @@ export default async function DashboardPage() {
       avg: avg(sql`CAST(${studentSessions.totalScore} AS FLOAT)`) 
     })
     .from(studentSessions)
-    .where(eq(studentSessions.completedAt, sql`NOT NULL`));
+    .where(sql`${studentSessions.completedAt} IS NOT NULL`);
 
   const recentSessions = await db
     .select({
@@ -40,7 +40,7 @@ export default async function DashboardPage() {
       completedAt: studentSessions.completedAt,
     })
     .from(studentSessions)
-    .where(eq(studentSessions.completedAt, sql`NOT NULL`))
+    .where(sql`${studentSessions.completedAt} IS NOT NULL`)
     .orderBy(sql`${studentSessions.completedAt} DESC`)
     .limit(10);
 

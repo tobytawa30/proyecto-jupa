@@ -15,7 +15,7 @@ export async function GET(request: Request) {
   if (school) {
     filters.push(eq(studentSessions.schoolId, school));
   }
-  filters.push(eq(studentSessions.completedAt, sql`NOT NULL`));
+  filters.push(sql`${studentSessions.completedAt} IS NOT NULL`);
 
   try {
     const results = await db

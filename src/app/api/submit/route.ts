@@ -32,51 +32,129 @@ export async function POST(request: Request) {
 
     const questionMap = new Map(questionData.map((q) => [q.id, q]));
 
-    const optionIds = answers
-      .filter((a: any) => a.selectedOptionId)
-      .map((a: any) => a.selectedOptionId);
+    // Separate TRUE_FALSE answers from others
+    const trueFalseAnswers = answers.filter((a: any) => {
+      const q = questionMap.get(a.questionId);
+      return q?.questionType === 'TRUE_FALSE' && a.selectedOptionId;
+    });
+    
+    const normalAnswers = answers.filter((a: any) => {
+      const q = questionMap.get(a.questionId);
+      return q?.questionType !== 'TRUE_FALSE' && a.selectedOptionId;
+    });
 
     let correctOptions: any[] = [];
-    if (optionIds.length > 0) {
+    if (normalAnswers.length > 0) {
+      const optionIds = normalAnswers.map((a: any) => a.selectedOptionId);
       correctOptions = await db
         .select({
           id: questionOptions.id,
           isCorrect: questionOptions.isCorrect,
           questionId: questionOptions.questionId,
+          optionText: questionOptions.optionText,
         })
         .from(questionOptions)
         .where(inArray(questionOptions.id, optionIds));
     }
 
     const correctOptionsMap = new Map(
-      correctOptions.map((o) => [o.id, { isCorrect: o.isCorrect, questionId: o.questionId }])
+      correctOptions.map((o) => [o.id, { isCorrect: o.isCorrect, questionId: o.questionId, optionText: o.optionText }])
     );
 
     let totalScore = 0;
 
-    const answerRecords = answers.map((answer: any) => {
+    // Process TRUE_FALSE questions first
+    for (const answer of trueFalseAnswers) {
       const question = questionMap.get(answer.questionId);
-      const selectedOption = answer.selectedOptionId
-        ? correctOptionsMap.get(answer.selectedOptionId)
-        : null;
-
-      const isCorrect = selectedOption?.isCorrect ?? false;
-      const pointsEarned = isCorrect && question ? parseFloat(question.points.toString()) : 0;
-
-      if (isCorrect && question) {
+      if (!question) continue;
+      
+      const tfOptions = await db
+        .select({
+          id: questionOptions.id,
+          optionText: questionOptions.optionText,
+          isCorrect: questionOptions.isCorrect,
+        })
+        .from(questionOptions)
+        .where(eq(questionOptions.questionId, answer.questionId));
+      
+      const correctOption = tfOptions.find(o => o.isCorrect);
+      const isCorrect = correctOption ? answer.selectedOptionId === correctOption.optionText : false;
+      const pointsEarned = isCorrect ? parseFloat(question.points.toString()) : 0;
+      
+      if (isCorrect) {
         totalScore += parseFloat(question.points.toString());
       }
+    }
+
+    // Process normal questions
+    for (const answer of normalAnswers) {
+      const question = questionMap.get(answer.questionId);
+      if (!question) continue;
+      
+      const selectedOption = correctOptionsMap.get(answer.selectedOptionId);
+      const isCorrect = selectedOption?.isCorrect ?? false;
+      const pointsEarned = isCorrect ? parseFloat(question.points.toString()) : 0;
+
+      if (isCorrect) {
+        totalScore += parseFloat(question.points.toString());
+      }
+    }
+
+    // Build answer records
+    const answerRecords = answers.map((answer: any) => {
+      const question = questionMap.get(answer.questionId);
+      
+      if (question?.questionType === 'TRUE_FALSE') {
+        // Will be calculated below
+        return {
+          sessionId,
+          questionId: answer.questionId,
+          selectedOptionId: undefined, // Don't store for TRUE_FALSE
+          isCorrect: false,
+          pointsEarned: '0',
+        };
+      }
+      
+      const selectedOption = correctOptionsMap.get(answer.selectedOptionId);
+      const isCorrect = selectedOption?.isCorrect ?? false;
+      const pointsEarned = isCorrect ? parseFloat(question?.points?.toString() || '0') : 0;
 
       return {
         sessionId,
         questionId: answer.questionId,
-        selectedOptionId: answer.selectedOptionId || null,
+        selectedOptionId: answer.selectedOptionId || undefined,
         isCorrect,
         pointsEarned: pointsEarned.toString(),
       };
     });
 
-    await db.insert(examAnswers).values(answerRecords);
+    // Calculate TRUE_FALSE scores for storage
+    for (let i = 0; i < answerRecords.length; i++) {
+      const answer = answers[i];
+      const question = questionMap.get(answer.questionId);
+      if (question?.questionType === 'TRUE_FALSE') {
+        const tfOptions = await db
+          .select({
+            optionText: questionOptions.optionText,
+            isCorrect: questionOptions.isCorrect,
+          })
+          .from(questionOptions)
+          .where(eq(questionOptions.questionId, answer.questionId));
+        
+        const correctOption = tfOptions.find(o => o.isCorrect);
+        const isCorrect = correctOption ? answer.selectedOptionId === correctOption.optionText : false;
+        answerRecords[i] = {
+          ...answerRecords[i],
+          isCorrect,
+          pointsEarned: isCorrect ? question.points.toString() : '0',
+        };
+      }
+    }
+
+    // Filter out TRUE_FALSE records for insert (they don't have valid selectedOptionId)
+    const recordsToInsert = answerRecords.filter(r => r.selectedOptionId !== undefined);
+
+    await db.insert(examAnswers).values(recordsToInsert);
 
     const examData = await db.query.exams.findFirst({
       where: eq(exams.id, session.examId!),
@@ -112,6 +190,7 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error('Error submitting exam:', error);
-    return NextResponse.json({ error: 'Error al enviar examen' }, { status: 500 });
+    const err = error as Error;
+    return NextResponse.json({ error: err.message || 'Error al enviar examen' }, { status: 500 });
   }
 }

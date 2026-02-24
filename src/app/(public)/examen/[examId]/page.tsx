@@ -107,6 +107,14 @@ export default function ExamPage({ params }: { params: Promise<{ examId: string 
 
     setIsSubmitting(true);
 
+    console.log('Submitting exam:', { sessionId, answers });
+
+    if (!sessionId) {
+      setError('Sesión no válida. Por favor inicia el examen desde el inicio.');
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
       const answersArray = Object.entries(answers).map(([questionId, selectedOptionId]) => ({
         questionId,
@@ -138,7 +146,8 @@ export default function ExamPage({ params }: { params: Promise<{ examId: string 
         router.push('/completo');
       }, 2000);
     } catch (err: any) {
-      setError(err.message || 'Error al enviar el examen');
+      console.error('Error submitting exam:', err);
+      setError(err.message || 'Error al enviar el examen. Intenta de nuevo.');
       setIsSubmitting(false);
     }
   };
@@ -233,18 +242,14 @@ export default function ExamPage({ params }: { params: Promise<{ examId: string 
                   onValueChange={(value) => handleOptionSelect(currentQuestion.id, value)}
                   className="space-y-3"
                 >
-                  <div className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
-                    <RadioGroupItem value="Verdadero" id="vf-true" />
-                    <Label htmlFor="vf-true" className="cursor-pointer flex-1">
-                      Verdadero
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
-                    <RadioGroupItem value="Falso" id="vf-false" />
-                    <Label htmlFor="vf-false" className="cursor-pointer flex-1">
-                      Falso
-                    </Label>
-                  </div>
+                  {currentQuestion.options.map((option) => (
+                    <div key={option.id} className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
+                      <RadioGroupItem value={option.optionText} id={option.id} />
+                      <Label htmlFor={option.id} className="cursor-pointer flex-1">
+                        {option.optionText}
+                      </Label>
+                    </div>
+                  ))}
                 </RadioGroup>
               ) : (
                 <RadioGroup
