@@ -244,7 +244,7 @@ export default function ExamPage({ params }: { params: Promise<{ examId: string 
                 >
                   {currentQuestion.options.map((option) => (
                     <div key={option.id} className="flex items-center space-x-3 p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
-                      <RadioGroupItem value={option.optionText} id={option.id} />
+                      <RadioGroupItem value={option.id} id={option.id} />
                       <Label htmlFor={option.id} className="cursor-pointer flex-1">
                         {option.optionText}
                       </Label>
