@@ -30,68 +30,40 @@ export async function POST(request: Request) {
 
     const questionMap = new Map(questionData.map((q) => [q.id, q]));
 
-    // Separate TRUE_FALSE answers from others
-    const trueFalseAnswers = answers.filter((a: any) => {
-      const q = questionMap.get(a.questionId);
-      return q?.questionType === 'TRUE_FALSE' && a.selectedOptionId;
-    });
-    
-    const normalAnswers = answers.filter((a: any) => {
-      const q = questionMap.get(a.questionId);
-      return q?.questionType !== 'TRUE_FALSE' && a.selectedOptionId;
-    });
+    const answeredOptions = answers.filter((a: any) => a.selectedOptionId);
 
-    let correctOptions: any[] = [];
-    if (normalAnswers.length > 0) {
-      const optionIds = normalAnswers.map((a: any) => a.selectedOptionId);
-      correctOptions = await db
+    let selectedOptions: any[] = [];
+    if (answeredOptions.length > 0) {
+      const optionIds = answeredOptions.map((a: any) => a.selectedOptionId);
+      selectedOptions = await db
         .select({
           id: questionOptions.id,
           isCorrect: questionOptions.isCorrect,
           questionId: questionOptions.questionId,
           optionText: questionOptions.optionText,
+          optionLabel: questionOptions.optionLabel,
         })
         .from(questionOptions)
         .where(inArray(questionOptions.id, optionIds));
     }
 
-    const correctOptionsMap = new Map(
-      correctOptions.map((o) => [o.id, { isCorrect: o.isCorrect, questionId: o.questionId, optionText: o.optionText }])
+    const selectedOptionsMap = new Map(
+      selectedOptions.map((o) => [o.id, {
+        isCorrect: o.isCorrect,
+        questionId: o.questionId,
+        optionText: o.optionText,
+        optionLabel: o.optionLabel,
+      }])
     );
 
     let totalScore = 0;
 
-    // Process TRUE_FALSE questions first
-    for (const answer of trueFalseAnswers) {
+    for (const answer of answeredOptions) {
       const question = questionMap.get(answer.questionId);
       if (!question) continue;
       
-      const tfOptions = await db
-        .select({
-          id: questionOptions.id,
-          optionText: questionOptions.optionText,
-          isCorrect: questionOptions.isCorrect,
-        })
-        .from(questionOptions)
-        .where(eq(questionOptions.questionId, answer.questionId));
-      
-      const correctOption = tfOptions.find(o => o.isCorrect);
-      const isCorrect = correctOption ? answer.selectedOptionId === correctOption.optionText : false;
-      const pointsEarned = isCorrect ? parseFloat(question.points.toString()) : 0;
-      
-      if (isCorrect) {
-        totalScore += parseFloat(question.points.toString());
-      }
-    }
-
-    // Process normal questions
-    for (const answer of normalAnswers) {
-      const question = questionMap.get(answer.questionId);
-      if (!question) continue;
-      
-      const selectedOption = correctOptionsMap.get(answer.selectedOptionId);
+      const selectedOption = selectedOptionsMap.get(answer.selectedOptionId);
       const isCorrect = selectedOption?.isCorrect ?? false;
-      const pointsEarned = isCorrect ? parseFloat(question.points.toString()) : 0;
 
       if (isCorrect) {
         totalScore += parseFloat(question.points.toString());
@@ -101,19 +73,8 @@ export async function POST(request: Request) {
     // Build answer records
     const answerRecords = answers.map((answer: any) => {
       const question = questionMap.get(answer.questionId);
-      
-      if (question?.questionType === 'TRUE_FALSE') {
-        // Will be calculated below
-        return {
-          sessionId,
-          questionId: answer.questionId,
-          selectedOptionId: undefined, // Don't store for TRUE_FALSE
-          isCorrect: false,
-          pointsEarned: '0',
-        };
-      }
-      
-      const selectedOption = correctOptionsMap.get(answer.selectedOptionId);
+
+      const selectedOption = selectedOptionsMap.get(answer.selectedOptionId);
       const isCorrect = selectedOption?.isCorrect ?? false;
       const pointsEarned = isCorrect ? parseFloat(question?.points?.toString() || '0') : 0;
 
@@ -126,33 +87,11 @@ export async function POST(request: Request) {
       };
     });
 
-    // Calculate TRUE_FALSE scores for storage
-    for (let i = 0; i < answerRecords.length; i++) {
-      const answer = answers[i];
-      const question = questionMap.get(answer.questionId);
-      if (question?.questionType === 'TRUE_FALSE') {
-        const tfOptions = await db
-          .select({
-            optionText: questionOptions.optionText,
-            isCorrect: questionOptions.isCorrect,
-          })
-          .from(questionOptions)
-          .where(eq(questionOptions.questionId, answer.questionId));
-        
-        const correctOption = tfOptions.find(o => o.isCorrect);
-        const isCorrect = correctOption ? answer.selectedOptionId === correctOption.optionText : false;
-        answerRecords[i] = {
-          ...answerRecords[i],
-          isCorrect,
-          pointsEarned: isCorrect ? question.points.toString() : '0',
-        };
-      }
+    const recordsToInsert = answerRecords.filter((r: { selectedOptionId?: string }) => Boolean(r.selectedOptionId));
+
+    if (recordsToInsert.length > 0) {
+      await db.insert(examAnswers).values(recordsToInsert);
     }
-
-    // Filter out TRUE_FALSE records for insert (they don't have valid selectedOptionId)
-    const recordsToInsert = answerRecords.filter((r: { selectedOptionId?: string }) => r.selectedOptionId !== undefined);
-
-    await db.insert(examAnswers).values(recordsToInsert);
 
     const [examData] = await db.select().from(exams).where(eq(exams.id, session.examId!)).limit(1);
 

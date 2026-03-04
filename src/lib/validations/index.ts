@@ -80,6 +80,20 @@ export const schoolSchema = z.object({
   code: z.string().min(1, 'El código es requerido'),
 });
 
+export const userCreateSchema = z.object({
+  name: z.string().min(1, 'El nombre es requerido').max(100, 'El nombre es muy largo'),
+  email: z.string().email('Email inválido'),
+  role: z.enum(['ADMIN', 'EDITOR']),
+  password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
+});
+
+export const userUpdateSchema = z.object({
+  name: z.string().min(1, 'El nombre es requerido').max(100, 'El nombre es muy largo'),
+  email: z.string().email('Email inválido'),
+  role: z.enum(['ADMIN', 'EDITOR']),
+  password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres').optional(),
+});
+
 export type StudentEntry = z.infer<typeof studentEntrySchema>;
 export type ExamSubmission = z.infer<typeof examSubmissionSchema>;
 export type SurveySubmission = z.infer<typeof surveySubmissionSchema>;
@@ -88,3 +102,5 @@ export type ExamForm = z.infer<typeof examSchema>;
 export type QuestionForm = z.infer<typeof questionSchema>;
 export type QuestionOptionForm = z.infer<typeof questionOptionSchema>;
 export type SchoolForm = z.infer<typeof schoolSchema>;
+export type UserCreateForm = z.infer<typeof userCreateSchema>;
+export type UserUpdateForm = z.infer<typeof userUpdateSchema>;

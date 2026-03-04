@@ -1,6 +1,16 @@
+import type { Metadata } from 'next';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import Link from 'next/link';
+
+export const metadata: Metadata = {
+  title: 'Examen Completado',
+  description: 'Confirmación de finalización del examen en JUPA Digital.',
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 export default function SuccessPage() {
   return (

@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
+import Link from 'next/link';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -43,6 +45,14 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
+          <Image
+            src="/LOGO-JUPA.png"
+            alt="Logo JUPA"
+            width={260}
+            height={120}
+            className="mx-auto mb-3 h-auto w-52"
+            priority
+          />
           <CardTitle className="text-2xl font-bold">JUPA Digital</CardTitle>
           <CardDescription>
             Ingresa tus credenciales de administrador
@@ -82,6 +92,10 @@ export default function LoginPage() {
 
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? 'Ingresando...' : 'Iniciar Sesión'}
+            </Button>
+
+            <Button type="button" variant="outline" className="w-full" asChild>
+              <Link href="/">Ir a vista de Estudiante</Link>
             </Button>
           </form>
         </CardContent>

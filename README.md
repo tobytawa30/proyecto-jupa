@@ -11,6 +11,14 @@ cp .env.example .env.local
 Required variables:
 
 - `POSTGRES_URL`: Postgres connection string used by the app and Drizzle.
+- `AUTH_SECRET`: Secret used by Auth.js/NextAuth to sign and verify sessions.
+- `NEXT_PUBLIC_APP_URL`: Public base URL for metadata, sitemap and robots (e.g. `http://localhost:3000` in local).
+
+You can generate `AUTH_SECRET` with:
+
+```bash
+openssl rand -base64 32
+```
 
 2. Run the development server:
 

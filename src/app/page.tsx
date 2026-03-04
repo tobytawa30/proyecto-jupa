@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -118,6 +119,14 @@ export default function Home() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-blue-50 to-white p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
+          <Image
+            src="/LOGO-JUPA.png"
+            alt="Logo JUPA"
+            width={260}
+            height={120}
+            className="mx-auto mb-3 h-auto w-52"
+            priority
+          />
           <CardTitle className="text-2xl font-bold text-blue-900">
             ¡Bienvenido a JUPA Digital!
           </CardTitle>

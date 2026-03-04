@@ -1,5 +1,6 @@
 import { db } from '@/lib/db';
 import { studentSessions, exams, schools } from '@/lib/db/schema';
+import { formatDateDDMMYYYY } from '@/lib/utils';
 import { eq, count, avg, sql } from 'drizzle-orm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Users, FileText, TrendingUp, GraduationCap } from 'lucide-react';
@@ -146,10 +147,7 @@ export default async function DashboardPage() {
                         </span>
                       </td>
                       <td className="py-3 px-4 text-gray-500">
-                        {session.completedAt 
-                          ? new Date(session.completedAt).toLocaleDateString('es-ES')
-                          : 'N/A'
-                        }
+                        {formatDateDDMMYYYY(session.completedAt)}
                       </td>
                     </tr>
                   ))}
