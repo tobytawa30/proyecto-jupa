@@ -1,5 +1,5 @@
 import { pgTable, text, timestamp, uuid, boolean, integer, decimal, pgEnum, jsonb, varchar } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations } from 'drizzle-orm/_relations';
 
 export const userRoleEnum = pgEnum('user_role', ['ADMIN', 'EDITOR']);
 export const questionTypeEnum = pgEnum('question_type', ['MULTIPLE_CHOICE', 'TRUE_FALSE', 'MATCHING']);

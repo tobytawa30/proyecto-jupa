@@ -2,11 +2,25 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, run the development server:
+1. Copy the environment template and set your local values:
+
+```bash
+cp .env.example .env.local
+```
+
+Required variables:
+
+- `POSTGRES_URL`: Postgres connection string used by the app and Drizzle.
+
+2. Run the development server:
 
 ```bash
 npm run dev
-# or
+```
+
+Or use your preferred package manager:
+
+```bash
 yarn dev
 # or
 pnpm dev

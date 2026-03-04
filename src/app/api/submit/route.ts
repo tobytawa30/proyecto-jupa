@@ -8,9 +8,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { sessionId, answers } = body;
 
-    const session = await db.query.studentSessions.findFirst({
-      where: eq(studentSessions.id, sessionId),
-    });
+    const [session] = await db.select().from(studentSessions).where(eq(studentSessions.id, sessionId)).limit(1);
 
     if (!session) {
       return NextResponse.json({ error: 'Sesión no encontrada' }, { status: 404 });
@@ -152,13 +150,11 @@ export async function POST(request: Request) {
     }
 
     // Filter out TRUE_FALSE records for insert (they don't have valid selectedOptionId)
-    const recordsToInsert = answerRecords.filter(r => r.selectedOptionId !== undefined);
+    const recordsToInsert = answerRecords.filter((r: { selectedOptionId?: string }) => r.selectedOptionId !== undefined);
 
     await db.insert(examAnswers).values(recordsToInsert);
 
-    const examData = await db.query.exams.findFirst({
-      where: eq(exams.id, session.examId!),
-    });
+    const [examData] = await db.select().from(exams).where(eq(exams.id, session.examId!)).limit(1);
 
     let performanceLevel: string | null = null;
     if (examData && examData.totalPoints) {

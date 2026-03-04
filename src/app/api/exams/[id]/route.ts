@@ -10,9 +10,7 @@ export async function GET(
   try {
     const { id } = await params;
 
-    const exam = await db.query.exams.findFirst({
-      where: eq(exams.id, id),
-    });
+    const [exam] = await db.select().from(exams).where(eq(exams.id, id)).limit(1);
 
     if (!exam) {
       return NextResponse.json({ error: 'Examen no encontrado' }, { status: 404 });
