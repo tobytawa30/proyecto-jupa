@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { exams, schools, questions, questionOptions } from '@/lib/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { exams } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
 
 export async function GET() {
   try {

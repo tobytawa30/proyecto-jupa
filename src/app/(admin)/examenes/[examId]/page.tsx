@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Trash2, Save, ArrowLeft, GripVertical } from 'lucide-react';
+import { Plus, Trash2, Save, ArrowLeft } from 'lucide-react';
 
 interface QuestionOption {
   id?: string;
@@ -42,6 +42,89 @@ interface Exam {
   questions: Question[];
 }
 
+const TRUE_FALSE_OPTIONS: QuestionOption[] = [
+  { optionLabel: 'A', optionText: 'Verdadero', isCorrect: false },
+  { optionLabel: 'B', optionText: 'Falso', isCorrect: false },
+];
+
+function createDefaultOptions(questionType: Question['questionType']): QuestionOption[] {
+  if (questionType === 'TRUE_FALSE') {
+    return TRUE_FALSE_OPTIONS.map((option) => ({ ...option }));
+  }
+
+  return [
+    { optionLabel: 'A', optionText: '', isCorrect: false },
+    { optionLabel: 'B', optionText: '', isCorrect: false },
+    { optionLabel: 'C', optionText: '', isCorrect: false },
+  ];
+}
+
+function normalizeOptions(options: QuestionOption[], questionType: Question['questionType']): QuestionOption[] {
+  if (questionType === 'TRUE_FALSE') {
+    const selectedAnswer = options.find((option) => option.isCorrect)?.optionText;
+
+    return TRUE_FALSE_OPTIONS.map((option) => ({
+      ...option,
+      isCorrect: option.optionText === selectedAnswer,
+    }));
+  }
+
+  return options.map((option, index) => ({
+    ...option,
+    optionLabel: String.fromCharCode(65 + index),
+  }));
+}
+
+function normalizeQuestion(question: Question): Question {
+  return {
+    ...question,
+    options: normalizeOptions(question.options, question.questionType),
+  };
+}
+
+function getOptionsForQuestionType(question: Question, nextType: Question['questionType']) {
+  if (nextType === 'TRUE_FALSE') {
+    return normalizeOptions(question.options, nextType);
+  }
+
+  if (question.questionType === 'TRUE_FALSE') {
+    return createDefaultOptions(nextType);
+  }
+
+  return normalizeOptions(question.options, nextType);
+}
+
+function validateExam(exam: Exam): string | null {
+  if (!exam.title.trim()) return 'El titulo del examen es requerido';
+  if (!exam.storyTitle.trim()) return 'El titulo del cuento es requerido';
+  if (!exam.storyContent.trim()) return 'El contenido del cuento es requerido';
+  if (exam.questions.length === 0) return 'Agrega al menos una pregunta';
+
+  for (const [index, question] of exam.questions.entries()) {
+    if (!question.questionText.trim()) {
+      return `La pregunta ${index + 1} debe tener un enunciado`;
+    }
+
+    if (question.questionType === 'MATCHING' && !question.contextText?.trim()) {
+      return `La pregunta ${index + 1} debe incluir el texto de referencia`;
+    }
+
+    const normalizedOptions = normalizeOptions(question.options, question.questionType);
+    const hasEmptyOption = normalizedOptions.some((option) => !option.optionText.trim());
+
+    if (hasEmptyOption) {
+      return `Completa todas las opciones de la pregunta ${index + 1}`;
+    }
+
+    const correctOptions = normalizedOptions.filter((option) => option.isCorrect);
+    if (correctOptions.length !== 1) {
+      return `Selecciona una sola respuesta correcta para la pregunta ${index + 1}`;
+    }
+  }
+
+  return null;
+}
+
 export default function ExamEditorPage() {
   const router = useRouter();
   const params = useParams();
@@ -64,17 +147,26 @@ export default function ExamEditorPage() {
   useEffect(() => {
     if (!isNew) {
       fetch(`/api/admin/exams/${examId}`)
-        .then((res) => res.json())
+        .then(async (res) => {
+          const data = await res.json();
+          if (!res.ok) {
+            throw new Error(data.error || 'Error al cargar examen');
+          }
+
+          return data;
+        })
         .then((data) => {
           if (data.questions) {
-            data.questions = data.questions.map((q: any) => ({
-              ...q,
-              options: q.options || [],
-            }));
+            data.questions = data.questions.map((q: any) =>
+              normalizeQuestion({
+                ...q,
+                options: q.options || [],
+              })
+            );
           }
           setExam(data);
         })
-        .catch(() => setError('Error al cargar examen'))
+        .catch((err: Error) => setError(err.message || 'Error al cargar examen'))
         .finally(() => setIsLoading(false));
     }
   }, [examId, isNew]);
@@ -85,11 +177,7 @@ export default function ExamEditorPage() {
       questionType: 'MULTIPLE_CHOICE',
       orderIndex: exam.questions.length,
       points: 1,
-      options: [
-        { optionLabel: 'A', optionText: '', isCorrect: false },
-        { optionLabel: 'B', optionText: '', isCorrect: false },
-        { optionLabel: 'C', optionText: '', isCorrect: false },
-      ],
+      options: createDefaultOptions('MULTIPLE_CHOICE'),
     };
     setExam((prev) => ({
       ...prev,
@@ -97,12 +185,23 @@ export default function ExamEditorPage() {
     }));
   };
 
-  const updateQuestion = (index: number, field: string, value: any) => {
+  const updateQuestion = (index: number, field: keyof Question, value: any) => {
     setExam((prev) => ({
       ...prev,
-      questions: prev.questions.map((q, i) =>
-        i === index ? { ...q, [field]: value } : q
-      ),
+      questions: prev.questions.map((q, i) => {
+        if (i !== index) return q;
+
+        const nextQuestion = { ...q, [field]: value } as Question;
+
+        if (field === 'questionType') {
+          nextQuestion.options = getOptionsForQuestionType(q, value as Question['questionType']);
+          if (value !== 'MATCHING') {
+            nextQuestion.contextText = '';
+          }
+        }
+
+        return normalizeQuestion(nextQuestion);
+      }),
     }));
   };
 
@@ -115,7 +214,7 @@ export default function ExamEditorPage() {
           if (oi !== optionIndex) return o;
           return { ...o, [field]: value };
         });
-        return { ...q, options: newOptions };
+        return normalizeQuestion({ ...q, options: newOptions });
       }),
     }));
   };
@@ -127,7 +226,7 @@ export default function ExamEditorPage() {
       ...prev,
       questions: prev.questions.map((q, i) =>
         i === questionIndex
-          ? { ...q, options: [...q.options, { optionLabel: label, optionText: '', isCorrect: false }] }
+          ? normalizeQuestion({ ...q, options: [...q.options, { optionLabel: label, optionText: '', isCorrect: false }] })
           : q
       ),
     }));
@@ -138,7 +237,7 @@ export default function ExamEditorPage() {
       ...prev,
       questions: prev.questions.map((q, i) =>
         i === questionIndex
-          ? { ...q, options: q.options.filter((_, oi) => oi !== optionIndex) }
+          ? normalizeQuestion({ ...q, options: q.options.filter((_, oi) => oi !== optionIndex) })
           : q
       ),
     }));
@@ -160,15 +259,28 @@ export default function ExamEditorPage() {
     setError('');
 
     try {
+      const validationError = validateExam(exam);
+      if (validationError) {
+        throw new Error(validationError);
+      }
+
       const method = isNew ? 'POST' : 'PUT';
       const url = isNew ? '/api/admin/exams' : `/api/admin/exams/${examId}`;
-      
+      const normalizedQuestions = exam.questions.map((question, index) => ({
+        ...normalizeQuestion(question),
+        orderIndex: index,
+      }));
+
       const totalPoints = calculateTotalPoints();
-      
+
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...exam, totalPoints: totalPoints.toString() }),
+        body: JSON.stringify({
+          ...exam,
+          questions: normalizedQuestions,
+          totalPoints: totalPoints.toString(),
+        }),
       });
 
       if (!res.ok) {
@@ -346,13 +458,13 @@ export default function ExamEditorPage() {
                 </Button>
               </div>
 
-              {question.questionType === 'TRUE_FALSE' ? (
+                  {question.questionType === 'TRUE_FALSE' ? (
                 <div className="space-y-2">
                   <Label>Respuesta Correcta</Label>
                   <Select
                     value={question.options.find(o => o.isCorrect)?.optionText || ''}
                     onValueChange={(v) => {
-                      const newOptions = question.options.map(o => ({
+                      const newOptions = normalizeOptions(question.options, 'TRUE_FALSE').map(o => ({
                         ...o,
                         isCorrect: o.optionText === v,
                       }));

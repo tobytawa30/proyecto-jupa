@@ -1,10 +1,9 @@
 import { db } from '@/lib/db';
-import { exams, questions, questionOptions } from '@/lib/db/schema';
-import { eq, asc } from 'drizzle-orm';
+import { exams } from '@/lib/db/schema';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, Edit, Eye } from 'lucide-react';
+import { Plus, Edit } from 'lucide-react';
 
 export default async function ExamsPage() {
   const allExams = await db
