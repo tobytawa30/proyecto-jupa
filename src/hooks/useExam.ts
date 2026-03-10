@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useCallback } from 'react';
 import { useLocalStorage } from './useLocalStorage';
 
 export interface ExamAnswer {
@@ -33,12 +33,10 @@ const INITIAL_STATE: ExamState = {
 };
 
 export function useExam(examId: string) {
-  const { storedValue: examState, setValue: setExamState, removeValue: clearExamState, isInitialized } = useLocalStorage<ExamState>(
+  const { storedValue: examState, setValue: setExamState, removeValue: clearExamState } = useLocalStorage<ExamState>(
     `exam_${examId}`,
     INITIAL_STATE
   );
-  const [isSaving, setIsSaving] = useState(false);
-  const saveIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const updateAnswer = useCallback(
     (questionId: string, optionId: string) => {
@@ -141,7 +139,7 @@ export function useExam(examId: string) {
 
   return {
     examState,
-    isSaving,
+    isSaving: false,
     updateAnswer,
     nextQuestion,
     prevQuestion,

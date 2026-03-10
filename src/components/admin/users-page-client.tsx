@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Edit, Plus, Trash2, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -75,7 +75,7 @@ export function UsersPageClient() {
     return () => clearTimeout(timeout);
   }, [search]);
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     setIsLoading(true);
     setError('');
     try {
@@ -100,11 +100,11 @@ export function UsersPageClient() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [debouncedSearch, roleFilter, page]);
 
   useEffect(() => {
     fetchUsers();
-  }, [debouncedSearch, roleFilter, page]);
+  }, [fetchUsers]);
 
   const resetForm = () => {
     setEditingId(null);

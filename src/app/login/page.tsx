@@ -34,7 +34,7 @@ export default function LoginPage() {
       } else {
         router.push('/dashboard');
       }
-    } catch (err) {
+    } catch {
       setError('Error al iniciar sesión');
     } finally {
       setIsLoading(false);

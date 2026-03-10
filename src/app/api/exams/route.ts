@@ -1,22 +1,9 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { exams } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { getActiveExamManifestItems } from '@/lib/exams/public';
 
 export async function GET() {
   try {
-    const activeExams = await db
-      .select({
-        id: exams.id,
-        title: exams.title,
-        grade: exams.grade,
-        storyTitle: exams.storyTitle,
-        isActive: exams.isActive,
-        totalPoints: exams.totalPoints,
-      })
-      .from(exams)
-      .where(eq(exams.isActive, true))
-      .orderBy(exams.grade);
+    const activeExams = await getActiveExamManifestItems();
 
     return NextResponse.json(activeExams);
   } catch (error) {

@@ -1,10 +1,11 @@
-import { pgTable, text, timestamp, uuid, boolean, integer, decimal, pgEnum, jsonb, varchar } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, uuid, boolean, integer, decimal, pgEnum, jsonb, varchar, uniqueIndex } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm/_relations';
 
 export const userRoleEnum = pgEnum('user_role', ['ADMIN', 'EDITOR']);
 export const questionTypeEnum = pgEnum('question_type', ['MULTIPLE_CHOICE', 'TRUE_FALSE', 'MATCHING']);
 export const sessionTypeEnum = pgEnum('session_type', ['EXAM', 'SURVEY', 'BOTH']);
 export const performanceLevelEnum = pgEnum('performance_level', ['ALTO', 'MEDIO', 'BAJO', 'EXCELENTE', 'INICIAL']);
+export const sessionSourceEnum = pgEnum('session_source', ['ONLINE', 'OFFLINE']);
 
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -96,7 +97,14 @@ export const studentSessions = pgTable('student_sessions', {
   totalScore: decimal('total_score', { precision: 5, scale: 2 }),
   performanceLevel: performanceLevelEnum('performance_level'),
   localStorageBackup: jsonb('local_storage_backup'),
-});
+  offlineAttemptId: text('offline_attempt_id'),
+  source: sessionSourceEnum('source').notNull().default('ONLINE'),
+  syncedAt: timestamp('synced_at'),
+  deviceId: text('device_id'),
+  examSnapshotVersion: timestamp('exam_snapshot_version'),
+}, (table) => ({
+  offlineAttemptIdIdx: uniqueIndex('student_sessions_offline_attempt_id_idx').on(table.offlineAttemptId),
+}));
 
 export const examAnswers = pgTable('exam_answers', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -105,7 +113,9 @@ export const examAnswers = pgTable('exam_answers', {
   selectedOptionId: uuid('selected_option_id').references(() => questionOptions.id),
   isCorrect: boolean('is_correct'),
   pointsEarned: decimal('points_earned', { precision: 4, scale: 2 }),
-});
+}, (table) => ({
+  sessionQuestionIdx: uniqueIndex('exam_answers_session_question_idx').on(table.sessionId, table.questionId),
+}));
 
 export const surveyAnswers = pgTable('survey_answers', {
   id: uuid('id').defaultRandom().primaryKey(),

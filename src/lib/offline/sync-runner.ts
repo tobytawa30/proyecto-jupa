@@ -1,0 +1,106 @@
+import { listOfflineAnswers, getOfflineAttempt, updateOfflineAttempt } from '@/lib/offline/attempt-repository';
+import { getAllQueueJobs, markQueueJobFailed, markQueueJobRunning, markQueueJobSynced } from '@/lib/offline/sync-queue';
+import type { SyncQueueJob } from '@/lib/offline/types';
+
+export interface SyncJobResult {
+  jobId: string;
+  offlineAttemptId: string;
+  success: boolean;
+  payload?: unknown;
+  error?: string;
+}
+
+export async function runExamSyncJob(job: SyncQueueJob) {
+  const runningJob = await markQueueJobRunning(job);
+
+  try {
+    const attempt = await getOfflineAttempt(job.offlineAttemptId);
+    if (!attempt) {
+      throw new Error('Intento offline no encontrado');
+    }
+
+    const answers = await listOfflineAnswers(job.offlineAttemptId);
+
+    await updateOfflineAttempt(job.offlineAttemptId, {
+      status: 'running',
+      lastSyncAttemptAt: new Date().toISOString(),
+    });
+
+    const response = await fetch('/api/offline/sync/exam', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        offlineAttemptId: attempt.offlineAttemptId,
+        examId: attempt.examId,
+        studentName: attempt.studentName,
+        schoolId: attempt.schoolId,
+        grade: attempt.grade,
+        deviceId: attempt.deviceId,
+        startedAt: attempt.startedAt,
+        completedAt: attempt.completedAt,
+        examSnapshotVersion: attempt.examSnapshotVersion,
+        answers: answers.map((answer) => ({
+          questionId: answer.questionId,
+          selectedOptionId: answer.selectedOptionId,
+        })),
+      }),
+    });
+
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || 'No se pudo sincronizar el examen offline');
+    }
+
+    await updateOfflineAttempt(job.offlineAttemptId, {
+      status: 'synced',
+      syncedSessionId: payload.sessionId,
+      syncError: undefined,
+      syncedAt: new Date().toISOString(),
+      lastSyncResult: 'success',
+    });
+
+    await markQueueJobSynced(runningJob);
+
+    return payload;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Error desconocido al sincronizar';
+    await updateOfflineAttempt(job.offlineAttemptId, {
+      status: 'failed',
+      syncError: message,
+      lastSyncResult: 'error',
+    });
+    await markQueueJobFailed(runningJob, message);
+    throw error;
+  }
+}
+
+export async function runAllPendingSyncJobs() {
+  const jobs = await getAllQueueJobs();
+  const runnableJobs = jobs
+    .filter((job) => job.status === 'pending' || job.status === 'failed')
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  const results: SyncJobResult[] = [];
+  for (const job of runnableJobs) {
+    try {
+      const payload = await runExamSyncJob(job);
+      results.push({
+        jobId: job.id,
+        offlineAttemptId: job.offlineAttemptId,
+        success: true,
+        payload,
+      });
+    } catch (error) {
+      results.push({
+        jobId: job.id,
+        offlineAttemptId: job.offlineAttemptId,
+        success: false,
+        error: error instanceof Error ? error.message : 'Error desconocido al sincronizar',
+      });
+    }
+  }
+
+  return results;
+}

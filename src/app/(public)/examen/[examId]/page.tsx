@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect, use, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -9,17 +9,29 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import confetti from 'canvas-confetti';
+import { getCachedExam, saveCachedExamPayload } from '@/lib/offline/cache-repository';
+import {
+  completeOfflineAttempt,
+  getOfflineAttempt,
+  listOfflineAnswers,
+  saveOfflineAnswer,
+  updateOfflineAttempt,
+  updateOfflineAttemptStatus,
+} from '@/lib/offline/attempt-repository';
+import { enqueueExamSync } from '@/lib/offline/sync-queue';
+import { isBrowserOnline } from '@/lib/offline/connectivity';
+import { runExamSyncJob } from '@/lib/offline/sync-runner';
 
 interface Question {
   id: string;
-  section?: string;
-  sectionTitle?: string;
+  section?: string | null;
+  sectionTitle?: string | null;
   questionText: string;
   questionType: string;
   orderIndex: number;
-  points: number;
-  helperText?: string;
-  contextText?: string;
+  points: number | string;
+  helperText?: string | null;
+  contextText?: string | null;
   options: {
     id: string;
     optionLabel: string;
@@ -35,107 +47,166 @@ interface Exam {
   storyContent: string;
   isActive: boolean;
   totalPoints: string;
+  updatedAt?: string;
   questions: Question[];
+}
+
+function hasFullExamPayload(payload: unknown): payload is Exam {
+  return Boolean(payload && typeof payload === 'object' && 'questions' in payload && Array.isArray((payload as { questions?: unknown[] }).questions));
 }
 
 export default function ExamPage({ params }: { params: Promise<{ examId: string }> }) {
   const { examId } = use(params);
   const router = useRouter();
   const searchParams = useSearchParams();
-  
-  const sessionId = searchParams.get('sessionId');
-  const studentName = searchParams.get('name');
+
+  const attemptId = searchParams.get('attemptId');
 
   const [exam, setExam] = useState<Exam | null>(null);
+  const [studentName, setStudentName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showStory, setShowStory] = useState(true);
   const [error, setError] = useState('');
+  const [syncStatus, setSyncStatus] = useState<'online' | 'offline'>('online');
 
-  useEffect(() => {
-    async function fetchExam() {
-      try {
-        const res = await fetch(`/api/exams/${examId}`);
-        if (!res.ok) throw new Error('Examen no encontrado');
-        const data = await res.json();
-        setExam(data);
-      } catch (err) {
-        setError('Error al cargar el examen');
-      } finally {
-        setIsLoading(false);
-      }
+  const initializeExam = useCallback(async () => {
+    if (!attemptId) {
+      setError('No se encontro el intento offline del examen.');
+      setIsLoading(false);
+      return;
     }
 
-    fetchExam();
-  }, [examId]);
+    try {
+      const [attempt, cachedExam, storedAnswers] = await Promise.all([
+        getOfflineAttempt(attemptId),
+        getCachedExam(examId),
+        listOfflineAnswers(attemptId),
+      ]);
+
+      if (!attempt) {
+        throw new Error('El intento offline no existe en este dispositivo.');
+      }
+
+      setStudentName(attempt.studentName);
+      setCurrentQuestionIndex(attempt.currentQuestionIndex);
+      setShowStory(attempt.showStory);
+
+      setAnswers(
+        Object.fromEntries(
+          storedAnswers
+            .filter((answer) => answer.selectedOptionId)
+            .map((answer) => [answer.questionId, answer.selectedOptionId as string])
+        )
+      );
+
+      if (cachedExam && hasFullExamPayload(cachedExam.payload)) {
+        setExam(cachedExam.payload);
+      } else if (isBrowserOnline()) {
+        const response = await fetch(`/api/exams/${examId}`, { cache: 'no-store' });
+        const payload = await response.json();
+
+        if (!response.ok) {
+          throw new Error(payload.error || 'No se pudo cargar el examen');
+        }
+
+        await saveCachedExamPayload(examId, attempt.examSnapshotVersion || payload.updatedAt || new Date().toISOString(), payload);
+        setExam(payload);
+      } else {
+        throw new Error('Este examen no esta descargado en el dispositivo y no hay conexion para obtenerlo.');
+      }
+
+      setSyncStatus(isBrowserOnline() ? 'online' : 'offline');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al cargar el examen');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [attemptId, examId]);
+
+  useEffect(() => {
+    initializeExam();
+  }, [initializeExam]);
 
   const currentQuestion = exam?.questions[currentQuestionIndex];
   const progress = exam ? ((currentQuestionIndex + 1) / exam.questions.length) * 100 : 0;
 
-  const handleOptionSelect = (questionId: string, optionId: string) => {
+  const handleOptionSelect = async (questionId: string, optionId: string) => {
+    if (!attemptId) {
+      return;
+    }
+
     setAnswers((prev) => ({
       ...prev,
       [questionId]: optionId,
     }));
+
+    await saveOfflineAnswer(attemptId, {
+      questionId,
+      selectedOptionId: optionId,
+    });
   };
 
   const selectedOptionId = currentQuestion ? answers[currentQuestion.id] || '' : '';
 
+  const moveToQuestion = async (nextIndex: number) => {
+    if (!attemptId) {
+      return;
+    }
+
+    setCurrentQuestionIndex(nextIndex);
+    await updateOfflineAttempt(attemptId, { currentQuestionIndex: nextIndex });
+  };
+
   const handleNext = () => {
     if (currentQuestionIndex < (exam?.questions.length || 0) - 1) {
-      setCurrentQuestionIndex((prev) => prev + 1);
+      void moveToQuestion(currentQuestionIndex + 1);
     }
   };
 
   const handlePrev = () => {
     if (currentQuestionIndex > 0) {
-      setCurrentQuestionIndex((prev) => prev - 1);
+      void moveToQuestion(currentQuestionIndex - 1);
     }
   };
 
-  const handleSubmit = async () => {
-    if (!sessionId) {
-      setError('Sesión no válida');
+  const handleStoryContinue = async () => {
+    if (!attemptId) {
       return;
     }
 
-    const unanswered = exam?.questions.filter((q) => !answers[q.id]).length || 0;
+    setShowStory(false);
+    await updateOfflineAttempt(attemptId, { showStory: false });
+  };
+
+  const handleSubmit = async () => {
+    if (!attemptId || !exam) {
+      setError('No se encontro el intento local del examen.');
+      return;
+    }
+
+    const unanswered = exam.questions.filter((question) => !answers[question.id]).length;
     if (unanswered > 0) {
-      if (!confirm(`¿Estás seguro de terminar? Hay ${unanswered} pregunta(s) sin responder.`)) {
+      const confirmed = confirm(`¿Estas seguro de terminar? Hay ${unanswered} pregunta(s) sin responder.`);
+      if (!confirmed) {
         return;
       }
     }
 
     setIsSubmitting(true);
-
-    console.log('Submitting exam:', { sessionId, answers });
-
-    if (!sessionId) {
-      setError('Sesión no válida. Por favor inicia el examen desde el inicio.');
-      setIsSubmitting(false);
-      return;
-    }
+    setError('');
 
     try {
-      const answersArray = Object.entries(answers).map(([questionId, selectedOptionId]) => ({
-        questionId,
-        selectedOptionId,
-      }));
+      await completeOfflineAttempt(attemptId);
+      const currentJob = await enqueueExamSync(attemptId);
+      await updateOfflineAttemptStatus(attemptId, 'pending');
 
-      const res = await fetch('/api/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId,
-          answers: answersArray,
-        }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Error al enviar respuestas');
+      let completionStatus = 'pending-sync';
+      if (isBrowserOnline()) {
+        await runExamSyncJob(currentJob);
+        completionStatus = 'synced';
       }
 
       confetti({
@@ -146,11 +217,12 @@ export default function ExamPage({ params }: { params: Promise<{ examId: string 
       });
 
       setTimeout(() => {
-        router.push('/completo');
-      }, 2000);
-    } catch (err: any) {
-      console.error('Error submitting exam:', err);
-      setError(err.message || 'Error al enviar el examen. Intenta de nuevo.');
+        router.push(`/completo?status=${completionStatus}&attemptId=${attemptId}`);
+      }, 1200);
+    } catch (err) {
+      console.error('Error finishing offline exam:', err);
+      await updateOfflineAttemptStatus(attemptId, 'failed', err instanceof Error ? err.message : 'Error de sincronizacion');
+      setError(err instanceof Error ? err.message : 'No se pudo finalizar el examen');
       setIsSubmitting(false);
     }
   };
@@ -171,7 +243,8 @@ export default function ExamPage({ params }: { params: Promise<{ examId: string 
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <Card className="w-full max-w-md">
           <CardContent className="pt-6">
-            <p className="text-center text-red-600">Examen no encontrado</p>
+            <p className="text-center text-red-600">{error || 'Examen no encontrado'}</p>
+            <Button className="mt-4 w-full" onClick={() => router.push('/')}>Volver al inicio</Button>
           </CardContent>
         </Card>
       </div>
@@ -184,23 +257,26 @@ export default function ExamPage({ params }: { params: Promise<{ examId: string 
         <div className="mx-auto max-w-4xl">
           <Card className="overflow-hidden border-amber-200/80 bg-white/95 shadow-[0_20px_60px_rgba(14,116,144,0.12)]">
             <CardContent className="p-6 md:p-8 lg:p-10">
-              <div className="mb-6 flex items-center justify-center">
+              <div className="mb-6 flex items-center justify-center gap-2">
                 <span className="rounded-full bg-amber-100 px-4 py-1 text-sm font-semibold text-amber-800">
                   Tiempo de lectura
+                </span>
+                <span className={`rounded-full px-4 py-1 text-sm font-semibold ${syncStatus === 'online' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'}`}>
+                  {syncStatus === 'online' ? 'Con conexion' : 'Trabajando offline'}
                 </span>
               </div>
               <h1 className="mb-4 text-center text-3xl font-bold tracking-tight text-sky-950 md:text-4xl">
                 {exam.storyTitle}
               </h1>
               <p className="mx-auto mb-8 max-w-2xl text-center text-base text-slate-600 md:text-lg">
-                Lee con calma. Cuando termines, el cuento seguira visible mientras respondes.
+                Lee con calma. Todo tu progreso se guarda en este dispositivo.
               </p>
               <div className="mb-8 whitespace-pre-wrap rounded-3xl bg-gradient-to-br from-amber-50 via-white to-sky-50 p-6 text-lg leading-9 text-slate-700 shadow-inner md:p-8 md:text-xl">
                 {exam.storyContent}
               </div>
               <div className="text-center">
                 <Button
-                  onClick={() => setShowStory(false)}
+                  onClick={handleStoryContinue}
                   className="h-14 rounded-full bg-emerald-600 px-8 text-lg font-semibold shadow-lg transition-transform hover:bg-emerald-700 hover:scale-[1.01]"
                 >
                   Comenzar a Responder
@@ -224,6 +300,9 @@ export default function ExamPage({ params }: { params: Promise<{ examId: string 
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 md:justify-end md:text-sm">
               {studentName && <span className="rounded-full bg-sky-50 px-3 py-1 font-medium text-sky-800">{studentName}</span>}
+              <span className={`rounded-full px-3 py-1 font-medium ${syncStatus === 'online' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-700'}`}>
+                {syncStatus === 'online' ? 'Respaldo listo para sync' : 'Guardando offline'}
+              </span>
               <span className="rounded-full bg-amber-50 px-3 py-1 font-medium text-amber-800">
                 Pregunta {currentQuestionIndex + 1} de {exam.questions.length}
               </span>
@@ -236,15 +315,15 @@ export default function ExamPage({ params }: { params: Promise<{ examId: string 
               <span className="hidden text-[11px] font-medium text-slate-500 md:inline md:text-xs">Toca un numero para cambiar</span>
             </div>
             <div className="flex flex-wrap gap-2">
-              {exam.questions.map((_, index) => (
+              {exam.questions.map((question, index) => (
                 <button
-                  key={index}
-                  onClick={() => setCurrentQuestionIndex(index)}
+                  key={question.id}
+                  onClick={() => void moveToQuestion(index)}
                   className={cn(
                     'flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold transition-colors md:h-10 md:w-10 md:text-sm',
                     index === currentQuestionIndex
                       ? 'bg-sky-600 text-white shadow-md'
-                      : answers[exam.questions[index].id]
+                      : answers[question.id]
                         ? 'bg-emerald-500 text-white'
                         : 'bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100'
                   )}
@@ -263,7 +342,7 @@ export default function ExamPage({ params }: { params: Promise<{ examId: string 
                 <p className="text-sm font-semibold uppercase tracking-[0.18em] text-amber-700">Cuento</p>
                 <p className="mt-1 text-base text-slate-600 md:text-lg">Puedes volver a leerlo mientras respondes.</p>
               </div>
-              <div className="max-h-[38vh] overflow-y-auto px-5 py-5 text-base leading-8 text-slate-700 whitespace-pre-wrap md:max-h-[72vh] md:px-6 md:py-6 md:text-lg md:leading-9">
+              <div className="max-h-[38vh] overflow-y-auto px-5 py-5 text-base leading-8 whitespace-pre-wrap text-slate-700 md:max-h-[72vh] md:px-6 md:py-6 md:text-lg md:leading-9">
                 {exam.storyContent}
               </div>
             </CardContent>
@@ -281,7 +360,7 @@ export default function ExamPage({ params }: { params: Promise<{ examId: string 
 
                   {currentQuestion.contextText && (
                     <div className="mb-4 rounded-2xl border border-sky-100 bg-sky-50 p-4 text-base italic leading-7 text-slate-700">
-                      "{currentQuestion.contextText}"
+                      &quot;{currentQuestion.contextText}&quot;
                     </div>
                   )}
 
@@ -291,7 +370,7 @@ export default function ExamPage({ params }: { params: Promise<{ examId: string 
 
                   <RadioGroup
                     value={selectedOptionId}
-                    onValueChange={(value) => handleOptionSelect(currentQuestion.id, value)}
+                    onValueChange={(value) => void handleOptionSelect(currentQuestion.id, value)}
                     className="space-y-3"
                   >
                     {currentQuestion.options.map((option) => {
@@ -342,7 +421,7 @@ export default function ExamPage({ params }: { params: Promise<{ examId: string 
                         disabled={isSubmitting}
                         className="h-12 rounded-full bg-emerald-600 px-6 text-base hover:bg-emerald-700"
                       >
-                        {isSubmitting ? 'Enviando...' : 'Terminar Examen'}
+                        {isSubmitting ? 'Guardando...' : 'Terminar Examen'}
                       </Button>
                     ) : (
                       <Button onClick={handleNext} className="h-12 rounded-full bg-sky-600 px-6 text-base hover:bg-sky-700">
