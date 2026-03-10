@@ -54,7 +54,7 @@ self.addEventListener('fetch', (event) => {
     url.pathname.startsWith('/examen/') ||
     url.pathname.startsWith('/completo')
   ) {
-    event.respondWith(networkFirst(request, STATIC_CACHE));
+    event.respondWith(networkFirst(request, STATIC_CACHE, { normalizePathname: true }));
     return;
   }
 
@@ -78,17 +78,18 @@ self.addEventListener('fetch', (event) => {
   }
 });
 
-async function networkFirst(request, cacheName) {
+async function networkFirst(request, cacheName, options = {}) {
   const cache = await caches.open(cacheName);
+  const cacheKey = getCacheKey(request, options);
 
   try {
     const response = await fetch(request);
     if (response && response.ok) {
-      cache.put(request, response.clone());
+      cache.put(cacheKey, response.clone());
     }
     return response;
   } catch (error) {
-    const cachedResponse = await cache.match(request);
+    const cachedResponse = await cache.match(cacheKey);
     if (cachedResponse) {
       return cachedResponse;
     }
@@ -116,4 +117,18 @@ async function cacheFirst(request, cacheName) {
     cache.put(request, response.clone());
   }
   return response;
+}
+
+function getCacheKey(request, options = {}) {
+  const url = new URL(request.url);
+
+  if (options.normalizePathname && url.pathname.startsWith('/examen/')) {
+    return new Request(`${url.origin}${url.pathname}`);
+  }
+
+  if (options.normalizePathname && request.mode === 'navigate') {
+    return new Request(`${url.origin}${url.pathname}`);
+  }
+
+  return request;
 }

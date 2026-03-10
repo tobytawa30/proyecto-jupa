@@ -127,6 +127,17 @@ export default function Home() {
     return new Date(value).toLocaleString();
   };
 
+  const navigateToExamAttempt = useCallback((examId: string, attemptId: string) => {
+    const targetUrl = `/examen/${examId}?attemptId=${attemptId}`;
+
+    if (isBrowserOnline()) {
+      router.push(targetUrl);
+      return;
+    }
+
+    window.location.assign(targetUrl);
+  }, [router]);
+
   const fetchOnlineData = useCallback(async () => {
     const response = await fetch('/api/offline/cache-manifest', { cache: 'no-store' });
     const payload = await response.json() as OfflineCacheManifest | { error: string };
@@ -150,8 +161,8 @@ export default function Home() {
     await router.prefetch('/completo');
     await Promise.all(
       examIds.map(async (examId) => {
-        await router.prefetch(`/examen/${examId}?attemptId=offline-warmup`);
-        await fetch(`/examen/${examId}?attemptId=offline-warmup`, { cache: 'no-store' }).catch(() => undefined);
+        await router.prefetch(`/examen/${examId}`);
+        await fetch(`/examen/${examId}`, { cache: 'no-store' }).catch(() => undefined);
       })
     );
   }, [router]);
@@ -347,7 +358,7 @@ export default function Home() {
       });
 
       await refreshLocalState();
-      router.push(`/examen/${examForGrade.id}?attemptId=${offlineAttemptId}`);
+      navigateToExamAttempt(examForGrade.id, offlineAttemptId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al iniciar el examen');
     } finally {
@@ -443,7 +454,7 @@ export default function Home() {
                   type="button"
                   variant="outline"
                   className="mt-3 w-full border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
-                  onClick={() => router.push(`/examen/${resumableAttempt.examId}?attemptId=${resumableAttempt.offlineAttemptId}`)}
+                  onClick={() => navigateToExamAttempt(resumableAttempt.examId, resumableAttempt.offlineAttemptId)}
                 >
                   Reanudar examen guardado
                 </Button>
@@ -508,7 +519,7 @@ export default function Home() {
                           <Button
                             type="button"
                             variant="outline"
-                            onClick={() => router.push(`/examen/${attempt.examId}?attemptId=${attempt.offlineAttemptId}`)}
+                            onClick={() => navigateToExamAttempt(attempt.examId, attempt.offlineAttemptId)}
                           >
                             Reanudar
                           </Button>
