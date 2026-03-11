@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const STATIC_CACHE = `jupa-static-${CACHE_VERSION}`;
 const DATA_CACHE = `jupa-data-${CACHE_VERSION}`;
 
@@ -43,13 +43,22 @@ self.addEventListener('fetch', (event) => {
   }
 
   const url = new URL(request.url);
+  const isRscRequest = url.searchParams.has('_rsc')
+    || request.headers.get('accept')?.includes('text/x-component')
+    || request.headers.get('rsc') === '1';
 
   if (url.origin !== self.location.origin) {
     return;
   }
 
+  if (url.pathname.startsWith('/examen/') && isRscRequest) {
+    event.respondWith(networkFirst(request, DATA_CACHE));
+    return;
+  }
+
   if (
     request.destination === 'document' ||
+    request.mode === 'navigate' ||
     url.pathname === '/' ||
     url.pathname.startsWith('/examen/') ||
     url.pathname.startsWith('/completo')
@@ -123,11 +132,11 @@ function getCacheKey(request, options = {}) {
   const url = new URL(request.url);
 
   if (options.normalizePathname && url.pathname.startsWith('/examen/')) {
-    return new Request(`${url.origin}${url.pathname}`);
+    return new Request(`${url.origin}${url.pathname}?__offline_shell=1`);
   }
 
   if (options.normalizePathname && request.mode === 'navigate') {
-    return new Request(`${url.origin}${url.pathname}`);
+    return new Request(`${url.origin}${url.pathname}?__offline_shell=1`);
   }
 
   return request;

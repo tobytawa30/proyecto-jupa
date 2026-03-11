@@ -161,8 +161,12 @@ export default function Home() {
     await router.prefetch('/completo');
     await Promise.all(
       examIds.map(async (examId) => {
-        await router.prefetch(`/examen/${examId}`);
-        await fetch(`/examen/${examId}`, { cache: 'no-store' }).catch(() => undefined);
+        await fetch(`/examen/${examId}`, {
+          cache: 'no-store',
+          headers: {
+            accept: 'text/html',
+          },
+        }).catch(() => undefined);
       })
     );
   }, [router]);
