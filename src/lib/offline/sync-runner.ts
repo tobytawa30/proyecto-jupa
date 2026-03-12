@@ -50,7 +50,8 @@ export async function runExamSyncJob(job: SyncQueueJob) {
 
     const payload = await response.json();
     if (!response.ok) {
-      throw new Error(payload.error || 'No se pudo sincronizar el examen offline');
+      const message = [payload.error, payload.details].filter(Boolean).join(': ');
+      throw new Error(message || 'No se pudo sincronizar el examen offline');
     }
 
     await updateOfflineAttempt(job.offlineAttemptId, {
