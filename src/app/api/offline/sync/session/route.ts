@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getOrCreateOfflineSession } from '@/lib/exams/session-sync';
 import type { OfflineSyncSessionPayload } from '@/lib/offline/types';
-import { getOfflineSchemaMismatchMessage, isOfflineSchemaMismatch } from '@/lib/db/error-utils';
+import { getErrorDebugMessage, getOfflineSchemaMismatchMessage, isOfflineSchemaMismatch } from '@/lib/db/error-utils';
 
 export async function POST(request: Request) {
   try {
@@ -38,6 +38,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: getOfflineSchemaMismatchMessage() }, { status: 503 });
     }
 
-    return NextResponse.json({ error: 'Error al sincronizar la sesion offline' }, { status: 500 });
+    return NextResponse.json({
+      error: 'Error al sincronizar la sesion offline',
+      details: getErrorDebugMessage(error),
+    }, { status: 500 });
   }
 }

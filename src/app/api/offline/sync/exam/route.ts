@@ -5,7 +5,7 @@ import { gradeAndStoreExamSubmission } from '@/lib/exams/grading';
 import { getOrCreateOfflineSession } from '@/lib/exams/session-sync';
 import type { OfflineSyncExamPayload } from '@/lib/offline/types';
 import { eq } from 'drizzle-orm';
-import { getOfflineSchemaMismatchMessage, isOfflineSchemaMismatch } from '@/lib/db/error-utils';
+import { getErrorDebugMessage, getOfflineSchemaMismatchMessage, isOfflineSchemaMismatch } from '@/lib/db/error-utils';
 
 export async function POST(request: Request) {
   try {
@@ -112,7 +112,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: getOfflineSchemaMismatchMessage() }, { status: 503 });
     }
 
-    const err = error as Error;
-    return NextResponse.json({ error: err.message || 'Error al sincronizar examen offline' }, { status: 500 });
+    return NextResponse.json({
+      error: 'Error al sincronizar examen offline',
+      details: getErrorDebugMessage(error),
+    }, { status: 500 });
   }
 }
