@@ -117,6 +117,29 @@ export const examAnswers = pgTable('exam_answers', {
   sessionQuestionIdx: uniqueIndex('exam_answers_session_question_idx').on(table.sessionId, table.questionId),
 }));
 
+export const offlineExamConflicts = pgTable('offline_exam_conflicts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  offlineAttemptId: text('offline_attempt_id').notNull(),
+  sessionId: uuid('session_id').notNull().references(() => studentSessions.id, { onDelete: 'cascade' }),
+  examId: uuid('exam_id').notNull().references(() => exams.id, { onDelete: 'cascade' }),
+  studentName: text('student_name').notNull(),
+  schoolId: uuid('school_id').notNull().references(() => schools.id),
+  grade: integer('grade').notNull(),
+  deviceId: text('device_id'),
+  reason: text('reason').notNull(),
+  status: text('status').notNull().default('pending_review'),
+  snapshotVersion: timestamp('snapshot_version'),
+  currentVersion: timestamp('current_version'),
+  answersPayload: jsonb('answers_payload').notNull(),
+  examSnapshotPayload: jsonb('exam_snapshot_payload'),
+  syncPayload: jsonb('sync_payload').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  resolvedAt: timestamp('resolved_at'),
+}, (table) => ({
+  offlineAttemptIdIdx: uniqueIndex('offline_exam_conflicts_offline_attempt_id_idx').on(table.offlineAttemptId),
+}));
+
 export const surveyAnswers = pgTable('survey_answers', {
   id: uuid('id').defaultRandom().primaryKey(),
   sessionId: uuid('session_id').notNull().references(() => studentSessions.id, { onDelete: 'cascade' }),
@@ -177,6 +200,7 @@ export const studentSessionsRelations = relations(studentSessions, ({ one, many 
     references: [surveys.id],
   }),
   examAnswers: many(examAnswers),
+  offlineExamConflicts: many(offlineExamConflicts),
   surveyAnswers: many(surveyAnswers),
 }));
 
@@ -192,6 +216,21 @@ export const examAnswersRelations = relations(examAnswers, ({ one }) => ({
   selectedOption: one(questionOptions, {
     fields: [examAnswers.selectedOptionId],
     references: [questionOptions.id],
+  }),
+}));
+
+export const offlineExamConflictsRelations = relations(offlineExamConflicts, ({ one }) => ({
+  session: one(studentSessions, {
+    fields: [offlineExamConflicts.sessionId],
+    references: [studentSessions.id],
+  }),
+  exam: one(exams, {
+    fields: [offlineExamConflicts.examId],
+    references: [exams.id],
+  }),
+  school: one(schools, {
+    fields: [offlineExamConflicts.schoolId],
+    references: [schools.id],
   }),
 }));
 
@@ -226,5 +265,7 @@ export type StudentSession = typeof studentSessions.$inferSelect;
 export type NewStudentSession = typeof studentSessions.$inferInsert;
 export type ExamAnswer = typeof examAnswers.$inferSelect;
 export type NewExamAnswer = typeof examAnswers.$inferInsert;
+export type OfflineExamConflict = typeof offlineExamConflicts.$inferSelect;
+export type NewOfflineExamConflict = typeof offlineExamConflicts.$inferInsert;
 export type SurveyAnswer = typeof surveyAnswers.$inferSelect;
 export type NewSurveyAnswer = typeof surveyAnswers.$inferInsert;

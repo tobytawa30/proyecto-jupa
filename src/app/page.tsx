@@ -83,8 +83,8 @@ export default function Home() {
     return matchingExam?.storyTitle || `Examen de ${attempt.grade} grado`;
   }, [exams]);
 
-  const getAttemptStatusMeta = (status: OfflineAttemptRecord['status']) => {
-    switch (status) {
+  const getAttemptStatusMeta = (attempt: OfflineAttemptRecord) => {
+    switch (attempt.status) {
       case 'draft':
         return {
           label: 'En progreso',
@@ -107,13 +107,20 @@ export default function Home() {
           badgeClassName: 'bg-rose-100 text-rose-700',
         };
       case 'synced':
+        if (attempt.requiresReview) {
+          return {
+            label: 'Sincronizado con revision',
+            badgeClassName: 'bg-amber-100 text-amber-800',
+          };
+        }
+
         return {
           label: 'Sincronizado',
           badgeClassName: 'bg-emerald-100 text-emerald-700',
         };
       default:
         return {
-          label: status,
+          label: attempt.status,
           badgeClassName: 'bg-slate-100 text-slate-700',
         };
     }
@@ -209,10 +216,16 @@ export default function Home() {
             const results = await runAllPendingSyncJobs();
             await refreshLocalState();
             const failedCount = results.filter((result) => !result.success).length;
+            const reviewCount = results.filter((result) => {
+              const payload = result.payload as { requiresReview?: boolean } | undefined;
+              return result.success && Boolean(payload?.requiresReview);
+            }).length;
             setStatusMessage(
-              failedCount === 0
+              failedCount === 0 && reviewCount === 0
                 ? 'Sincronizacion completada.'
-                : `Sincronizacion parcial: ${failedCount} intento(s) requieren revision.`
+                : failedCount === 0
+                  ? `Sincronizacion completada. ${reviewCount} intento(s) quedaron en revision.`
+                  : `Sincronizacion parcial: ${failedCount} intento(s) fallaron y ${reviewCount} quedaron en revision.`
             );
           }
         } catch (err) {
@@ -282,10 +295,16 @@ export default function Home() {
       const results = await runAllPendingSyncJobs();
       await refreshLocalState();
       const failedCount = results.filter((result) => !result.success).length;
+      const reviewCount = results.filter((result) => {
+        const payload = result.payload as { requiresReview?: boolean } | undefined;
+        return result.success && Boolean(payload?.requiresReview);
+      }).length;
       setStatusMessage(
-        failedCount === 0
+        failedCount === 0 && reviewCount === 0
           ? 'Las respuestas pendientes se sincronizaron correctamente.'
-          : `Se sincronizaron algunos intentos, pero ${failedCount} quedaron con error.`
+          : failedCount === 0
+            ? `Las respuestas pendientes se sincronizaron. ${reviewCount} intento(s) quedaron en revision.`
+            : `Se sincronizaron algunos intentos, pero ${failedCount} quedaron con error y ${reviewCount} quedaron en revision.`
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al sincronizar examenes pendientes');
@@ -310,9 +329,13 @@ export default function Home() {
         job = await enqueueExamSync(attempt.offlineAttemptId);
       }
 
-      await runExamSyncJob(job);
+      const payload = await runExamSyncJob(job) as { requiresReview?: boolean };
       await refreshLocalState();
-      setStatusMessage(`El intento de ${attempt.studentName} se sincronizo correctamente.`);
+      setStatusMessage(
+        payload.requiresReview
+          ? `El intento de ${attempt.studentName} se sincronizo y quedo en revision.`
+          : `El intento de ${attempt.studentName} se sincronizo correctamente.`
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo reintentar la sincronizacion');
       await refreshLocalState();
@@ -493,7 +516,7 @@ export default function Home() {
               </div>
             ) : (
               deviceAttempts.map((attempt) => {
-                const statusMeta = getAttemptStatusMeta(attempt.status);
+                const statusMeta = getAttemptStatusMeta(attempt);
 
                 return (
                   <div key={attempt.offlineAttemptId} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -512,6 +535,9 @@ export default function Home() {
                         )}
                         {attempt.syncedAt && (
                           <p className="mt-1 text-xs font-medium text-emerald-700">Sincronizado: {formatDateTime(attempt.syncedAt)}</p>
+                        )}
+                        {attempt.reviewReason && (
+                          <p className="mt-2 text-xs font-medium text-amber-700">{attempt.reviewReason}</p>
                         )}
                         {attempt.syncError && (
                           <p className="mt-2 text-xs font-medium text-rose-600">{attempt.syncError}</p>

@@ -1,4 +1,5 @@
 import { listOfflineAnswers, getOfflineAttempt, updateOfflineAttempt } from '@/lib/offline/attempt-repository';
+import { getCachedExam } from '@/lib/offline/cache-repository';
 import { getAllQueueJobs, markQueueJobFailed, markQueueJobRunning, markQueueJobSynced } from '@/lib/offline/sync-queue';
 import type { SyncQueueJob } from '@/lib/offline/types';
 
@@ -10,6 +11,15 @@ export interface SyncJobResult {
   error?: string;
 }
 
+interface ExamSyncResponse {
+  success: boolean;
+  sessionId?: string;
+  requiresReview?: boolean;
+  reviewReason?: string;
+  error?: string;
+  details?: string;
+}
+
 export async function runExamSyncJob(job: SyncQueueJob) {
   const runningJob = await markQueueJobRunning(job);
 
@@ -19,7 +29,10 @@ export async function runExamSyncJob(job: SyncQueueJob) {
       throw new Error('Intento offline no encontrado');
     }
 
-    const answers = await listOfflineAnswers(job.offlineAttemptId);
+    const [answers, cachedExam] = await Promise.all([
+      listOfflineAnswers(job.offlineAttemptId),
+      getCachedExam(attempt.examId),
+    ]);
 
     await updateOfflineAttempt(job.offlineAttemptId, {
       status: 'running',
@@ -41,6 +54,7 @@ export async function runExamSyncJob(job: SyncQueueJob) {
         startedAt: attempt.startedAt,
         completedAt: attempt.completedAt,
         examSnapshotVersion: attempt.examSnapshotVersion,
+        examSnapshotPayload: cachedExam?.payload,
         answers: answers.map((answer) => ({
           questionId: answer.questionId,
           selectedOptionId: answer.selectedOptionId,
@@ -48,7 +62,7 @@ export async function runExamSyncJob(job: SyncQueueJob) {
       }),
     });
 
-    const payload = await response.json();
+    const payload = await response.json() as ExamSyncResponse;
     if (!response.ok) {
       const message = [payload.error, payload.details].filter(Boolean).join(': ');
       throw new Error(message || 'No se pudo sincronizar el examen offline');
@@ -58,6 +72,8 @@ export async function runExamSyncJob(job: SyncQueueJob) {
       status: 'synced',
       syncedSessionId: payload.sessionId,
       syncError: undefined,
+      requiresReview: Boolean(payload.requiresReview),
+      reviewReason: payload.requiresReview ? payload.reviewReason : undefined,
       syncedAt: new Date().toISOString(),
       lastSyncResult: 'success',
     });

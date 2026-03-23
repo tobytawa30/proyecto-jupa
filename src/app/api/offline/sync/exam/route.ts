@@ -1,11 +1,35 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { exams, studentSessions } from '@/lib/db/schema';
+import { persistOfflineExamConflict } from '@/lib/exams/offline-conflicts';
 import { gradeAndStoreExamSubmission } from '@/lib/exams/grading';
 import { getOrCreateOfflineSession } from '@/lib/exams/session-sync';
 import type { OfflineSyncExamPayload } from '@/lib/offline/types';
 import { eq } from 'drizzle-orm';
 import { getErrorDebugMessage, getOfflineSchemaMismatchMessage, isOfflineSchemaMismatch } from '@/lib/db/error-utils';
+
+function isOfflineReferenceConflict(error: unknown) {
+  const maybeDbError = error as { code?: string; constraint?: string };
+
+  if (maybeDbError.code !== '23503') {
+    return false;
+  }
+
+  return (
+    maybeDbError.constraint === 'exam_answers_question_id_questions_id_fk' ||
+    maybeDbError.constraint === 'exam_answers_selected_option_id_question_options_id_fk'
+  );
+}
+
+function getOfflineConflictReason(error: unknown) {
+  const maybeDbError = error as { constraint?: string };
+
+  if (maybeDbError.constraint === 'exam_answers_selected_option_id_question_options_id_fk') {
+    return 'MISSING_OPTION_REFERENCE';
+  }
+
+  return 'MISSING_QUESTION_REFERENCE';
+}
 
 export async function POST(request: Request) {
   try {
@@ -67,22 +91,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Examen no encontrado' }, { status: 404 });
     }
 
-    if (body.examSnapshotVersion) {
-      const snapshotVersion = new Date(body.examSnapshotVersion).toISOString();
-      const currentVersion = exam.updatedAt.toISOString();
-
-      if (snapshotVersion !== currentVersion) {
-        return NextResponse.json(
-          {
-            error: 'El examen fue modificado despues de descargarse en este dispositivo. Requiere revision antes de sincronizar.',
-            code: 'EXAM_VERSION_MISMATCH',
-            currentVersion,
-            snapshotVersion,
-          },
-          { status: 409 }
-        );
-      }
-    }
+    const currentVersion = exam.updatedAt.toISOString();
 
     if (session.completedAt) {
       return NextResponse.json({
@@ -94,12 +103,60 @@ export async function POST(request: Request) {
       });
     }
 
-    const result = await gradeAndStoreExamSubmission({
-      sessionId,
-      answers: body.answers,
-      completedAt: body.completedAt ? new Date(body.completedAt) : new Date(),
-      markSyncedAt: new Date(),
-    });
+    if (body.examSnapshotVersion) {
+      const snapshotVersion = new Date(body.examSnapshotVersion).toISOString();
+
+      if (snapshotVersion !== currentVersion) {
+        const reviewState = await persistOfflineExamConflict({
+          sessionId: session.id,
+          currentVersion,
+          reason: 'EXAM_VERSION_MISMATCH',
+          payload: body,
+        });
+
+        return NextResponse.json(
+          {
+            success: true,
+            sessionId: session.id,
+            code: 'OFFLINE_REVIEW_REQUIRED',
+            ...reviewState,
+            currentVersion,
+            snapshotVersion,
+          },
+          { status: 200 }
+        );
+      }
+    }
+
+    let result;
+
+    try {
+      result = await gradeAndStoreExamSubmission({
+        sessionId,
+        answers: body.answers,
+        completedAt: body.completedAt ? new Date(body.completedAt) : new Date(),
+        markSyncedAt: new Date(),
+      });
+    } catch (error) {
+      if (isOfflineReferenceConflict(error)) {
+        const reviewState = await persistOfflineExamConflict({
+          sessionId: session.id,
+          currentVersion,
+          reason: getOfflineConflictReason(error),
+          payload: body,
+        });
+
+        return NextResponse.json({
+          success: true,
+          sessionId: session.id,
+          code: 'OFFLINE_REVIEW_REQUIRED',
+          ...reviewState,
+          currentVersion,
+        });
+      }
+
+      throw error;
+    }
 
     return NextResponse.json({
       ...result,

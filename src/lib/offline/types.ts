@@ -25,6 +25,7 @@ export interface OfflineSyncExamPayload {
   sessionId?: string;
   examId: string;
   examSnapshotVersion?: string;
+  examSnapshotPayload?: unknown;
   completedAt?: string;
   answers: OfflineExamAnswerPayload[];
 }
@@ -70,6 +71,8 @@ export interface OfflineAttemptRecord extends OfflineAttemptPayload {
   status: OfflineSyncStatus;
   syncedSessionId?: string;
   syncError?: string;
+   requiresReview?: boolean;
+   reviewReason?: string;
   syncedAt?: string;
   lastSyncAttemptAt?: string;
   lastSyncResult?: 'success' | 'error';
