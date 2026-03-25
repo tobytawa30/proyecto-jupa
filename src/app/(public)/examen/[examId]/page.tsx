@@ -19,6 +19,7 @@ import {
   updateOfflineAttemptStatus,
 } from '@/lib/offline/attempt-repository';
 import { enqueueExamSync } from '@/lib/offline/sync-queue';
+import { buildOfflineExamEvidenceSummary, hasEvidenceReadyExam } from '@/lib/offline/exam-evidence';
 import { isBrowserOnline } from '@/lib/offline/connectivity';
 import { runExamSyncJob } from '@/lib/offline/sync-runner';
 
@@ -52,7 +53,7 @@ interface Exam {
 }
 
 function hasFullExamPayload(payload: unknown): payload is Exam {
-  return Boolean(payload && typeof payload === 'object' && 'questions' in payload && Array.isArray((payload as { questions?: unknown[] }).questions));
+  return hasEvidenceReadyExam(payload);
 }
 
 export default function ExamPage({ params }: { params: Promise<{ examId: string }> }) {
@@ -199,14 +200,17 @@ export default function ExamPage({ params }: { params: Promise<{ examId: string 
     setError('');
 
     try {
+      const examEvidenceSummary = buildOfflineExamEvidenceSummary(exam, answers);
+
+      await updateOfflineAttempt(attemptId, { examEvidenceSummary });
       await completeOfflineAttempt(attemptId);
       const currentJob = await enqueueExamSync(attemptId);
       await updateOfflineAttemptStatus(attemptId, 'pending');
 
       let completionStatus = 'pending-sync';
       if (isBrowserOnline()) {
-        await runExamSyncJob(currentJob);
-        completionStatus = 'synced';
+        const payload = await runExamSyncJob(currentJob) as { requiresReview?: boolean };
+        completionStatus = payload.requiresReview ? 'review' : 'synced';
       }
 
       confetti({

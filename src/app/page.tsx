@@ -106,6 +106,11 @@ export default function Home() {
           label: 'Error de sincronizacion',
           badgeClassName: 'bg-rose-100 text-rose-700',
         };
+      case 'review':
+        return {
+          label: 'En revision administrativa',
+          badgeClassName: 'bg-sky-100 text-sky-800',
+        };
       case 'synced':
         if (attempt.requiresReview) {
           return {

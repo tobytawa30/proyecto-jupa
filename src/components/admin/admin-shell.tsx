@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
 import {
+  AlertTriangle,
   BarChart3,
   FileText,
   GraduationCap,
@@ -28,6 +29,7 @@ interface AdminShellProps {
 const primaryNavItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/resultados', label: 'Resultados', icon: BarChart3 },
+  { href: '/resultados/conflictos', label: 'Conflictos', icon: AlertTriangle },
 ];
 
 const configNavItems = [
@@ -39,6 +41,10 @@ const configNavItems = [
 function isRouteActive(pathname: string, href: string) {
   if (href === '/dashboard') {
     return pathname === '/dashboard';
+  }
+
+  if (href === '/resultados') {
+    return pathname === '/resultados' || (pathname.startsWith('/resultados/') && !pathname.startsWith('/resultados/conflictos'));
   }
 
   return pathname === href || pathname.startsWith(`${href}/`);

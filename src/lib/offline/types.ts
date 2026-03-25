@@ -1,8 +1,35 @@
-export type OfflineSyncStatus = 'draft' | 'completed_local' | 'pending' | 'running' | 'failed' | 'synced';
+export type OfflineSyncStatus = 'draft' | 'completed_local' | 'pending' | 'running' | 'failed' | 'review' | 'synced';
 
 export interface OfflineExamAnswerPayload {
   questionId: string;
   selectedOptionId?: string;
+}
+
+export interface OfflineExamEvidenceQuestionOption {
+  id: string;
+  optionLabel: string;
+  optionText: string;
+  isCorrect?: boolean;
+}
+
+export interface OfflineExamEvidenceQuestion {
+  questionId: string;
+  questionText: string;
+  questionType: string;
+  points: string;
+  section?: string | null;
+  selectedOptionId?: string;
+  selectedOptionLabel?: string;
+  selectedOptionText?: string;
+  options: OfflineExamEvidenceQuestionOption[];
+}
+
+export interface OfflineExamEvidenceSummary {
+  examId: string;
+  examTitle: string;
+  storyTitle: string;
+  generatedAt: string;
+  questions: OfflineExamEvidenceQuestion[];
 }
 
 export interface OfflineAttemptPayload {
@@ -26,6 +53,7 @@ export interface OfflineSyncExamPayload {
   examId: string;
   examSnapshotVersion?: string;
   examSnapshotPayload?: unknown;
+  examEvidenceSummary?: OfflineExamEvidenceSummary;
   completedAt?: string;
   answers: OfflineExamAnswerPayload[];
 }
@@ -69,6 +97,7 @@ export interface OfflineAttemptRecord extends OfflineAttemptPayload {
   currentQuestionIndex: number;
   showStory: boolean;
   status: OfflineSyncStatus;
+  examEvidenceSummary?: OfflineExamEvidenceSummary;
   syncedSessionId?: string;
   syncError?: string;
    requiresReview?: boolean;

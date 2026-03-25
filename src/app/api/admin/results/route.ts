@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { studentSessions, schools, exams } from '@/lib/db/schema';
-import { eq, sql, desc, and, ilike, count } from 'drizzle-orm';
+import { studentSessions, schools, exams, offlineExamConflicts } from '@/lib/db/schema';
+import { eq, sql, desc, and, ilike, or } from 'drizzle-orm';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -20,6 +20,11 @@ export async function GET(request: Request) {
     ? Math.min(pageSizeParam, 100)
     : 10;
   const offset = (page - 1) * pageSize;
+  const visibleAt = sql`COALESCE(${studentSessions.completedAt}, ${studentSessions.syncedAt})`;
+  const visibilityFilter = or(
+    sql`${studentSessions.completedAt} IS NOT NULL`,
+    eq(offlineExamConflicts.status, 'pending_review'),
+  );
 
   const filters: any[] = [];
   if (grade) {
@@ -41,16 +46,17 @@ export async function GET(request: Request) {
     filters.push(ilike(studentSessions.name, `%${name}%`));
   }
   if (date) {
-    filters.push(sql`DATE(${studentSessions.completedAt}) = ${date}`);
+    filters.push(sql`DATE(${visibleAt}) = ${date}`);
   }
-  filters.push(sql`${studentSessions.completedAt} IS NOT NULL`);
+  filters.push(visibilityFilter);
 
   const whereClause = and(...filters);
 
   try {
     const [totalResult] = await db
-      .select({ count: count() })
+      .select({ count: sql<number>`count(distinct ${studentSessions.id})` })
       .from(studentSessions)
+      .leftJoin(offlineExamConflicts, eq(studentSessions.id, offlineExamConflicts.sessionId))
       .where(whereClause);
 
     const total = Number(totalResult?.count || 0);
@@ -64,14 +70,19 @@ export async function GET(request: Request) {
         totalScore: studentSessions.totalScore,
         performanceLevel: studentSessions.performanceLevel,
         completedAt: studentSessions.completedAt,
+        syncedAt: studentSessions.syncedAt,
+        displayDate: visibleAt,
+        reviewStatus: offlineExamConflicts.status,
+        reviewReason: offlineExamConflicts.reason,
         schoolName: schools.name,
         examTitle: exams.title,
       })
       .from(studentSessions)
       .leftJoin(schools, eq(studentSessions.schoolId, schools.id))
       .leftJoin(exams, eq(studentSessions.examId, exams.id))
+      .leftJoin(offlineExamConflicts, eq(studentSessions.id, offlineExamConflicts.sessionId))
       .where(whereClause)
-      .orderBy(desc(studentSessions.completedAt))
+      .orderBy(desc(visibleAt))
       .limit(pageSize)
       .offset(offset);
 

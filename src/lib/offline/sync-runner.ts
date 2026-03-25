@@ -1,5 +1,6 @@
 import { listOfflineAnswers, getOfflineAttempt, updateOfflineAttempt } from '@/lib/offline/attempt-repository';
 import { getCachedExam } from '@/lib/offline/cache-repository';
+import { hasEvidenceReadyExam } from '@/lib/offline/exam-evidence';
 import { getAllQueueJobs, markQueueJobFailed, markQueueJobRunning, markQueueJobSynced } from '@/lib/offline/sync-queue';
 import type { SyncQueueJob } from '@/lib/offline/types';
 
@@ -16,6 +17,7 @@ interface ExamSyncResponse {
   sessionId?: string;
   requiresReview?: boolean;
   reviewReason?: string;
+  code?: string;
   error?: string;
   details?: string;
 }
@@ -33,6 +35,11 @@ export async function runExamSyncJob(job: SyncQueueJob) {
       listOfflineAnswers(job.offlineAttemptId),
       getCachedExam(attempt.examId),
     ]);
+    const examSnapshotPayload = hasEvidenceReadyExam(cachedExam?.payload) ? cachedExam.payload : undefined;
+
+    if (!examSnapshotPayload && (!attempt.examEvidenceSummary || attempt.examEvidenceSummary.questions.length === 0)) {
+      throw new Error('No se encontro una copia suficiente del examen en este dispositivo para sincronizar de forma segura.');
+    }
 
     await updateOfflineAttempt(job.offlineAttemptId, {
       status: 'running',
@@ -54,7 +61,8 @@ export async function runExamSyncJob(job: SyncQueueJob) {
         startedAt: attempt.startedAt,
         completedAt: attempt.completedAt,
         examSnapshotVersion: attempt.examSnapshotVersion,
-        examSnapshotPayload: cachedExam?.payload,
+        examSnapshotPayload,
+        examEvidenceSummary: attempt.examEvidenceSummary,
         answers: answers.map((answer) => ({
           questionId: answer.questionId,
           selectedOptionId: answer.selectedOptionId,
@@ -69,7 +77,7 @@ export async function runExamSyncJob(job: SyncQueueJob) {
     }
 
     await updateOfflineAttempt(job.offlineAttemptId, {
-      status: 'synced',
+      status: payload.requiresReview ? 'review' : 'synced',
       syncedSessionId: payload.sessionId,
       syncError: undefined,
       requiresReview: Boolean(payload.requiresReview),

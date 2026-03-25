@@ -23,6 +23,15 @@ function getStatusCopy(status?: string) {
         tone: 'text-emerald-700',
         box: 'border-emerald-200 bg-emerald-50',
       };
+    case 'review':
+      return {
+        emoji: '📝',
+        title: 'Examen enviado con revision pendiente',
+        body: 'El examen ya llego a la nube, pero necesita revision del equipo porque la version del examen cambio o faltan datos de la version original.',
+        hint: 'No tienes que repetirlo. El personal administrativo lo puede revisar y finalizar desde el panel.',
+        tone: 'text-sky-800',
+        box: 'border-sky-200 bg-sky-50',
+      };
     case 'pending-sync':
     default:
       return {

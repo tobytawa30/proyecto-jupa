@@ -45,6 +45,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Datos insuficientes para sincronizar el examen' }, { status: 400 });
     }
 
+    const hasSnapshotPayload = Boolean(
+      body.examSnapshotPayload
+      && typeof body.examSnapshotPayload === 'object'
+      && 'questions' in body.examSnapshotPayload
+      && Array.isArray((body.examSnapshotPayload as { questions?: unknown[] }).questions)
+    );
+    const hasEvidenceSummary = Boolean(
+      body.examEvidenceSummary
+      && Array.isArray(body.examEvidenceSummary.questions)
+      && body.examEvidenceSummary.questions.length > 0
+    );
+
+    if (!hasSnapshotPayload && !hasEvidenceSummary) {
+      return NextResponse.json({ error: 'No se recibio evidencia suficiente del examen offline para sincronizarlo.' }, { status: 400 });
+    }
+
     let sessionId = body.sessionId;
 
     if (!sessionId) {

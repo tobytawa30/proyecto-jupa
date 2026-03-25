@@ -74,7 +74,7 @@ export function updateOfflineAttemptStatus(offlineAttemptId: string, status: Off
   return updateOfflineAttempt(offlineAttemptId, {
     status,
     syncError,
-    lastSyncResult: status === 'synced' ? 'success' : status === 'failed' ? 'error' : undefined,
+    lastSyncResult: status === 'synced' || status === 'review' ? 'success' : status === 'failed' ? 'error' : undefined,
   });
 }
 
