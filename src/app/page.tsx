@@ -575,7 +575,7 @@ export default function Home() {
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200 bg-white/95 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
+        <Card className="order-2 border-slate-200 bg-white/95 shadow-[0_20px_60px_rgba(15,23,42,0.08)] lg:order-none">
           <CardHeader>
             <CardTitle className="text-xl font-bold text-slate-900">Cola del dispositivo</CardTitle>
             <CardDescription>
@@ -702,7 +702,7 @@ export default function Home() {
         </Card>
         </div>
 
-        <Card className="border-blue-100 bg-white/95 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
+        <Card className="order-1 border-blue-100 bg-white/95 shadow-[0_20px_60px_rgba(15,23,42,0.08)] lg:order-none">
           <CardHeader>
             <CardTitle className="text-2xl font-bold text-blue-900">Comenzar examen</CardTitle>
             <CardDescription>Si no hay internet, el examen solo podra iniciar si este dispositivo ya fue preparado.</CardDescription>
