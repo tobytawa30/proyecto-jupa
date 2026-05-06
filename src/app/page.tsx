@@ -480,7 +480,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,#edf8ff_0%,#fffaf0_55%,#ffffff_100%)] p-4 md:p-6">
       <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-        <div className="space-y-6">
+        <div className="order-2 space-y-6 lg:order-1">
         <Card className="border-sky-100 bg-white/95 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
           <CardHeader className="text-center">
             <Image
@@ -575,7 +575,7 @@ export default function Home() {
           </CardContent>
         </Card>
 
-        <Card className="order-2 border-slate-200 bg-white/95 shadow-[0_20px_60px_rgba(15,23,42,0.08)] lg:order-none">
+        <Card className="border-slate-200 bg-white/95 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
           <CardHeader>
             <CardTitle className="text-xl font-bold text-slate-900">Cola del dispositivo</CardTitle>
             <CardDescription>
@@ -702,7 +702,7 @@ export default function Home() {
         </Card>
         </div>
 
-        <Card className="order-1 border-blue-100 bg-white/95 shadow-[0_20px_60px_rgba(15,23,42,0.08)] lg:order-none">
+        <Card className="order-1 border-blue-100 bg-white/95 shadow-[0_20px_60px_rgba(15,23,42,0.08)] lg:order-2">
           <CardHeader>
             <CardTitle className="text-2xl font-bold text-blue-900">Comenzar examen</CardTitle>
             <CardDescription>Si no hay internet, el examen solo podra iniciar si este dispositivo ya fue preparado.</CardDescription>
