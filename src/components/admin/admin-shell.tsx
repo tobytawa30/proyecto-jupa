@@ -67,7 +67,7 @@ export function AdminShell({ children, userEmail, userRole }: AdminShellProps) {
   };
 
   return (
-    <div className="h-screen overflow-hidden bg-slate-100">
+    <div className="min-h-screen bg-slate-100">
       <header className="md:hidden h-14 border-b border-slate-200 bg-white px-4 flex items-center justify-between">
         <button
           type="button"
@@ -80,10 +80,10 @@ export function AdminShell({ children, userEmail, userRole }: AdminShellProps) {
         <Image src="/LOGO-JUPA.png" alt="Logo JUPA" width={120} height={45} className="h-auto w-28" priority />
       </header>
 
-      <div className="flex h-[calc(100vh-3.5rem)] md:h-screen">
+      <div className="flex min-h-[calc(100vh-3.5rem)] md:min-h-screen">
         <aside
           className={cn(
-            'hidden md:flex h-full shrink-0 flex-col overflow-hidden border-r border-slate-800 bg-slate-950 text-slate-100 transition-all duration-200',
+            'sticky top-0 hidden md:flex h-screen shrink-0 flex-col overflow-hidden border-r border-slate-800 bg-slate-950 text-slate-100 transition-all duration-200',
             collapsed ? 'w-20' : 'w-72',
           )}
         >
@@ -183,7 +183,7 @@ export function AdminShell({ children, userEmail, userRole }: AdminShellProps) {
           </div>
         </aside>
 
-        <main className="flex-1 min-w-0 h-full overflow-y-auto p-4 md:p-8">{children}</main>
+        <main className="flex-1 min-w-0 p-4 md:p-8">{children}</main>
       </div>
 
       {mobileOpen && (
