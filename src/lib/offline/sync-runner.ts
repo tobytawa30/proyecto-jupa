@@ -1,6 +1,6 @@
 import { listOfflineAnswers, getOfflineAttempt, updateOfflineAttempt } from '@/lib/offline/attempt-repository';
 import { getCachedExam } from '@/lib/offline/cache-repository';
-import { hasEvidenceReadyExam } from '@/lib/offline/exam-evidence';
+import { buildOfflineExamEvidenceSummary, hasEvidenceReadyExam } from '@/lib/offline/exam-evidence';
 import { getAllQueueJobs, markQueueJobFailed, markQueueJobRunning, markQueueJobSynced } from '@/lib/offline/sync-queue';
 import type { SyncQueueJob } from '@/lib/offline/types';
 
@@ -36,8 +36,24 @@ export async function runExamSyncJob(job: SyncQueueJob) {
       getCachedExam(attempt.examId),
     ]);
     const examSnapshotPayload = hasEvidenceReadyExam(cachedExam?.payload) ? cachedExam.payload : undefined;
+    const rebuiltEvidenceSummary = !attempt.examEvidenceSummary && examSnapshotPayload
+      ? buildOfflineExamEvidenceSummary(
+          examSnapshotPayload,
+          Object.fromEntries(
+            answers
+              .filter((answer) => answer.selectedOptionId)
+              .map((answer) => [answer.questionId, answer.selectedOptionId as string])
+          )
+        )
+      : attempt.examEvidenceSummary;
 
-    if (!examSnapshotPayload && (!attempt.examEvidenceSummary || attempt.examEvidenceSummary.questions.length === 0)) {
+    if (rebuiltEvidenceSummary && rebuiltEvidenceSummary !== attempt.examEvidenceSummary) {
+      await updateOfflineAttempt(job.offlineAttemptId, {
+        examEvidenceSummary: rebuiltEvidenceSummary,
+      });
+    }
+
+    if (!examSnapshotPayload && (!rebuiltEvidenceSummary || rebuiltEvidenceSummary.questions.length === 0)) {
       throw new Error('No se encontro una copia suficiente del examen en este dispositivo para sincronizar de forma segura.');
     }
 
@@ -62,7 +78,7 @@ export async function runExamSyncJob(job: SyncQueueJob) {
         completedAt: attempt.completedAt,
         examSnapshotVersion: attempt.examSnapshotVersion,
         examSnapshotPayload,
-        examEvidenceSummary: attempt.examEvidenceSummary,
+        examEvidenceSummary: rebuiltEvidenceSummary,
         answers: answers.map((answer) => ({
           questionId: answer.questionId,
           selectedOptionId: answer.selectedOptionId,
