@@ -59,7 +59,7 @@ export default function Home() {
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
   const [resumableAttempt, setResumableAttempt] = useState<OfflineAttemptRecord | null>(null);
   const [deviceAttempts, setDeviceAttempts] = useState<OfflineAttemptRecord[]>([]);
-  const [deviceQueueFilter, setDeviceQueueFilter] = useState<DeviceQueueFilter>('all');
+  const [deviceQueueFilter, setDeviceQueueFilter] = useState<DeviceQueueFilter>('pending');
   const [deviceQueuePage, setDeviceQueuePage] = useState(1);
 
   const refreshLocalState = useCallback(async () => {
