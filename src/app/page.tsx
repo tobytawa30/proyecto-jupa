@@ -24,6 +24,18 @@ interface School {
 
 type Exam = CachedExamManifestItem;
 
+const DEVICE_QUEUE_PAGE_SIZE = 5;
+
+type DeviceQueueFilter =
+  | 'all'
+  | 'draft'
+  | 'pending'
+  | 'running'
+  | 'failed'
+  | 'review'
+  | 'synced'
+  | 'synced_with_review';
+
 function hasFullExamPayload(payload: unknown): payload is Exam & { questions: unknown[] } {
   return Boolean(payload && typeof payload === 'object' && 'questions' in payload && Array.isArray((payload as { questions?: unknown[] }).questions));
 }
@@ -47,6 +59,8 @@ export default function Home() {
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
   const [resumableAttempt, setResumableAttempt] = useState<OfflineAttemptRecord | null>(null);
   const [deviceAttempts, setDeviceAttempts] = useState<OfflineAttemptRecord[]>([]);
+  const [deviceQueueFilter, setDeviceQueueFilter] = useState<DeviceQueueFilter>('all');
+  const [deviceQueuePage, setDeviceQueuePage] = useState(1);
 
   const refreshLocalState = useCallback(async () => {
     const [cachedSchools, cachedExams, jobs, attempts] = await Promise.all([
@@ -131,6 +145,50 @@ export default function Home() {
     }
   };
 
+  const matchesDeviceQueueFilter = useCallback((attempt: OfflineAttemptRecord, filter: DeviceQueueFilter) => {
+    switch (filter) {
+      case 'all':
+        return true;
+      case 'draft':
+        return attempt.status === 'draft';
+      case 'pending':
+        return attempt.status === 'pending' || attempt.status === 'completed_local';
+      case 'running':
+        return attempt.status === 'running';
+      case 'failed':
+        return attempt.status === 'failed';
+      case 'review':
+        return attempt.status === 'review';
+      case 'synced':
+        return attempt.status === 'synced' && !attempt.requiresReview;
+      case 'synced_with_review':
+        return attempt.status === 'synced' && Boolean(attempt.requiresReview);
+      default:
+        return true;
+    }
+  }, []);
+
+  const filteredDeviceAttempts = useMemo(() => {
+    return deviceAttempts.filter((attempt) => matchesDeviceQueueFilter(attempt, deviceQueueFilter));
+  }, [deviceAttempts, deviceQueueFilter, matchesDeviceQueueFilter]);
+
+  const totalDeviceQueuePages = Math.max(1, Math.ceil(filteredDeviceAttempts.length / DEVICE_QUEUE_PAGE_SIZE));
+
+  const paginatedDeviceAttempts = useMemo(() => {
+    const startIndex = (deviceQueuePage - 1) * DEVICE_QUEUE_PAGE_SIZE;
+    return filteredDeviceAttempts.slice(startIndex, startIndex + DEVICE_QUEUE_PAGE_SIZE);
+  }, [deviceQueuePage, filteredDeviceAttempts]);
+
+  const visibleDeviceQueueRange = useMemo(() => {
+    if (filteredDeviceAttempts.length === 0) {
+      return null;
+    }
+
+    const start = (deviceQueuePage - 1) * DEVICE_QUEUE_PAGE_SIZE + 1;
+    const end = Math.min(deviceQueuePage * DEVICE_QUEUE_PAGE_SIZE, filteredDeviceAttempts.length);
+    return { start, end };
+  }, [deviceQueuePage, filteredDeviceAttempts.length]);
+
   const formatDateTime = (value?: string) => {
     if (!value) {
       return null;
@@ -138,6 +196,16 @@ export default function Home() {
 
     return new Date(value).toLocaleString();
   };
+
+  useEffect(() => {
+    setDeviceQueuePage(1);
+  }, [deviceQueueFilter]);
+
+  useEffect(() => {
+    if (deviceQueuePage > totalDeviceQueuePages) {
+      setDeviceQueuePage(1);
+    }
+  }, [deviceQueuePage, totalDeviceQueuePages]);
 
   const navigateToExamAttempt = useCallback((examId: string, attemptId: string) => {
     const targetUrl = `/examen/${examId}?attemptId=${attemptId}`;
@@ -515,12 +583,42 @@ export default function Home() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
+            <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Filtrar cola</p>
+                <p className="text-xs text-slate-500">
+                  {visibleDeviceQueueRange
+                    ? `Mostrando ${visibleDeviceQueueRange.start}-${visibleDeviceQueueRange.end} de ${filteredDeviceAttempts.length} examen(es)`
+                    : 'No hay examenes para el filtro seleccionado.'}
+                </p>
+              </div>
+              <Select value={deviceQueueFilter} onValueChange={(value) => setDeviceQueueFilter(value as DeviceQueueFilter)}>
+                <SelectTrigger className="h-10 w-full bg-white md:w-[260px]">
+                  <SelectValue placeholder="Filtrar por estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="pending">Pendiente de sincronizar</SelectItem>
+                  <SelectItem value="failed">Error</SelectItem>
+                  <SelectItem value="synced_with_review">Sincronizado con revision</SelectItem>
+                  <SelectItem value="review">En revision administrativa</SelectItem>
+                  <SelectItem value="running">Sincronizando</SelectItem>
+                  <SelectItem value="draft">En progreso</SelectItem>
+                  <SelectItem value="synced">Sincronizado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             {deviceAttempts.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
                 Aun no hay examenes locales guardados en este dispositivo.
               </div>
+            ) : filteredDeviceAttempts.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                No hay examenes que coincidan con el filtro seleccionado.
+              </div>
             ) : (
-              deviceAttempts.map((attempt) => {
+              paginatedDeviceAttempts.map((attempt) => {
                 const statusMeta = getAttemptStatusMeta(attempt);
 
                 return (
@@ -575,6 +673,30 @@ export default function Home() {
                   </div>
                 );
               })
+            )}
+
+            {filteredDeviceAttempts.length > DEVICE_QUEUE_PAGE_SIZE && (
+              <div className="flex flex-col gap-3 border-t border-slate-200 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-slate-600">Pagina {deviceQueuePage} de {totalDeviceQueuePages}</p>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={deviceQueuePage === 1}
+                    onClick={() => setDeviceQueuePage((current) => Math.max(1, current - 1))}
+                  >
+                    Anterior
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={deviceQueuePage === totalDeviceQueuePages}
+                    onClick={() => setDeviceQueuePage((current) => Math.min(totalDeviceQueuePages, current + 1))}
+                  >
+                    Siguiente
+                  </Button>
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>
